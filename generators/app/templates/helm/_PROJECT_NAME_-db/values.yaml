@@ -1,0 +1,13 @@
+jobs:
+  db:
+    name: <%= projectName %>-db
+    src: <%= projectName %>-db-src
+    image:
+      dockerID: hanaacademy
+      repository: hdi-deploy
+      tag: "latest"
+      pullPolicy: Always
+  hdi:
+    name: <%= projectName %>-hdi
+    bindingName: <%= projectName %>-hdi-binding
+    bindingSecretName: <%= projectName %>-hdi-binding-secret

@@ -1,0 +1,394 @@
+apiVersion: serverless.kyma-project.io/v1alpha2
+kind: Function
+metadata:
+  name: {{ .Values.services.srv.name }}
+  labels:
+    {{- include "app.labels" . | nindent 4 }}
+    app: {{ .Values.services.srv.name }}
+spec:
+  runtime: {{ .Values.services.srv.runtime }}
+<% if(hana){ -%>
+  runtimeImageOverride: hanaacademy/kyma-serverless-hanacloud:latest
+<% } -%>
+  source:
+    inline:
+      dependencies: |
+        {
+          "name": "{{ .Values.services.srv.name }}",
+          "version": "0.0.1",
+          "dependencies": {
+            "debug": "latest"
+<% if(authentication){ -%>
+            ,
+            "@sap/xsenv": "latest",
+            "@sap/xssec": "latest"
+<% } -%>
+<% if(hana){ -%>
+<% if(authentication){ -%>
+            ,
+<% } -%>
+            "@sap/hdbext": "latest"
+<% } -%>
+<% if(apiGraph || apiDest){ -%>
+<% if(authentication || hana){ -%>
+            ,
+<% } -%>
+            "@sap-cloud-sdk/http-client": "latest"
+<% } -%>
+<% if(apiS4HC || apiGraph || apiDest){ -%>
+<% if(authentication || hana || apiGraph || apiDest){ -%>
+            ,
+<% } -%>
+            "@sap-cloud-sdk/connectivity": "latest"
+<% } -%>
+<% if(apiS4HC){ -%>
+            ,
+            "@sap-cloud-sdk/odata-v2": "latest",
+            "@sap/cloud-sdk-vdm-sales-order-service": "latest"
+<% } -%>
+          }
+        }
+      source: |
+        const debug = require('debug')('<%= projectName %>-srv:function');
+        const NOT_FOUND = 'Not Found';
+<% if(authentication || hana){ -%>
+        const util = require('util');
+        const xsenv = require('@sap/xsenv');
+        const services = xsenv.getServices({
+<% if(authentication){ -%>
+          uaa: { label: 'xsuaa' }
+<% } -%>
+<% if(hana){ -%>
+<% if(authentication){ -%>
+          ,
+<% } -%>
+          hana: { label: 'hana' }
+<% } -%>
+        });
+<% } -%>
+<% if(authentication){ -%>
+        const FORBIDDEN = 'Forbidden';
+        const xssec = require('@sap/xssec');
+        const createSecurityContext = util.promisify(xssec.createSecurityContext);
+<% } -%>
+<% if(hana){ -%>
+        const UNABLE_TO_CONNECT_TO_HANA = 'Unable to connect to SAP HANA Cloud';
+        const hdbext = require('@sap/hdbext');
+        const createConnection = util.promisify(hdbext.createConnection);
+<% } -%>
+<% if(apiGraph || apiDest){ -%>
+        const httpClient = require('@sap-cloud-sdk/http-client');
+<% } -%>
+<% if(apiS4HC || apiGraph || apiDest){ -%>
+        const { retrieveJwt } = require('@sap-cloud-sdk/connectivity');
+<% } -%>
+<% if(apiS4HC){ -%>
+        const { desc } = require('@sap-cloud-sdk/odata-v2');
+        const { salesOrderService } = require('@sap/cloud-sdk-vdm-sales-order-service');
+        const { salesOrderApi, salesOrderItemApi } = salesOrderService();
+        function getSalesOrders(req) {
+          return salesOrderApi.requestBuilder()
+            .getAll()
+            .filter(salesOrderApi.schema.TOTAL_NET_AMOUNT.greaterThan(2000))
+            .top(3)
+            .orderBy(desc(salesOrderApi.schema.LAST_CHANGE_DATE_TIME))
+            .select(
+              salesOrderApi.schema.SALES_ORDER,
+              salesOrderApi.schema.LAST_CHANGE_DATE_TIME,
+              salesOrderApi.schema.INCOTERMS_LOCATION_1,
+              salesOrderApi.schema.TOTAL_NET_AMOUNT,
+              salesOrderApi.schema.TO_ITEM.select(salesOrderItemApi.schema.MATERIAL, salesOrderItemApi.schema.NET_AMOUNT)
+            )
+            .execute({
+              destinationName: '<%= projectName %>-s4hc-api'
+<% if(authentication){ -%>
+              ,
+              jwt: retrieveJwt(req)
+<% } -%>
+            });
+        }
+<% } -%>
+        module.exports = {
+          main: async function (event, context) {
+            let req = event.extensions.request;
+<% if(authentication){ -%>
+            let securityContext;
+            if (typeof req.headers.authorization === 'string' && req.headers.authorization.split(' ').length > 1 && req.headers.authorization.split(' ')[0].toLowerCase() === 'bearer') {
+              try {
+                  securityContext = await createSecurityContext(req.headers.authorization.split(' ')[1], services.uaa);
+              } catch (err) {
+                debug('Create Security Context', err.message);
+                return FORBIDDEN;
+              }
+            } else {
+              debug('Create Security Context', 'Invalid Headers - Missing Access Token');
+              return FORBIDDEN;
+            }
+<% } -%>
+<% if(hana){ -%>
+            var hanaClient;
+            try {
+              hanaClient = await createConnection(services.hana);
+            } catch (err) {
+              debug('Connect to SAP HANA Cloud', err.message, err.stack);
+              return UNABLE_TO_CONNECT_TO_HANA;
+            }
+<% } -%>
+            switch(req.path) {
+              case '/srv/':
+<% if(authorization){ -%>
+                if (securityContext.checkScope('$XSAPPNAME.User')) {
+<% } -%>
+                  results = context['function-name'];
+<% if(authorization){ -%>
+                } else {
+                  results = FORBIDDEN;
+                }
+<% } -%>
+                break;
+<% if(authentication){ -%>
+              case '/srv/user':
+<% if(authorization){ -%>
+                if (securityContext.checkScope('$XSAPPNAME.User')) {
+<% } -%>
+                  try {
+                    let user = {};
+                    user.logonName = securityContext.getLogonName();
+                    user.givenName = securityContext.getGivenName();
+                    user.familyName = securityContext.getFamilyName();
+                    user.email = securityContext.getEmail();
+<% if(authorization){ -%>
+                    user.scopes = {};
+                    user.scopes.User = securityContext.checkScope('$XSAPPNAME.User');
+                    user.scopes.Admin = securityContext.checkScope('$XSAPPNAME.Admin');
+<% } -%>
+                    results = user;
+                  } catch (err) {
+                    debug('/srv/user', err.message, err.stack);
+                    results = err.message;
+                  }
+<% if(authorization){ -%>
+                } else {
+                  results = FORBIDDEN;
+                }
+<% } -%>
+                break;
+<% } -%>
+<% if(apiS4HC){ -%>
+              case '/srv/salesorders':
+<% if(authorization){ -%>
+                if (securityContext.checkScope('$XSAPPNAME.User')) {
+<% } -%>
+                  await getSalesOrders(req)
+                    .then(salesOrders => {
+                      results = salesOrders;
+                  });
+<% if(authorization){ -%>
+                } else {
+                  results = FORBIDDEN;
+                }
+<% } -%>
+                break;
+<% } -%>
+<% if(apiGraph){ -%>
+              case '/srv/graph':
+<% if(authorization){ -%>
+                if (securityContext.checkScope('$XSAPPNAME.User')) {
+<% } -%>
+                  try {
+                    let res1 = await httpClient.executeHttpRequest(
+                      {
+                        destinationName: '<%= projectName %>-graph-api'
+<% if(authentication){ -%>
+                        ,
+                        jwt: retrieveJwt(req)
+<% } -%>
+                      },
+                      {
+                        method: 'GET',
+                        url: req.query.path || '<%= apiGraphId %>'
+                      }
+                    );
+                    let location = req.query.location || '';
+                    if (location !== '') {
+                      let res2 = await httpClient.executeHttpRequest(
+                        {
+                          destinationName: '<%= projectName %>-graph-api'
+<% if(authentication){ -%>
+                          ,
+                          jwt: retrieveJwt(req)
+<% } -%>
+                        },
+                        {
+                          method: 'PATCH',
+                          url: req.query.path || '<%= apiGraphId %>',
+                          headers: {
+                            "If-Match": res1.headers.etag
+                          },
+                          data: {
+                            "IncotermsTransferLocation": location,
+                            "IncotermsLocation1": location
+                          }
+                        },
+                        {
+                          fetchCsrfToken: false
+                        }
+                      );
+                      results = res2.data;
+                    } else {
+                      results = res1.data;
+                    };
+                  } catch (err) {
+                    debug('/srv/graph', err.message, err.stack);
+                    results = err.message;
+                  }
+<% if(authorization){ -%>
+                } else {
+                  results = FORBIDDEN;
+                }
+<% } -%>
+                break;
+<% } -%>
+<% if(apiDest){ -%>
+              case '/srv/dest':
+<% if(authorization){ -%>
+                if (securityContext.checkScope('$XSAPPNAME.User')) {
+<% } -%>
+                  try {
+                    let res1 = await httpClient.executeHttpRequest(
+                      {
+                        destinationName: req.query.destination || ''
+<% if(authentication){ -%>
+                        ,
+                        jwt: retrieveJwt(req)
+<% } -%>
+                      },
+                      {
+                        method: 'GET',
+                        url: req.query.path || ''
+                      }
+                    );
+                    results = res1.data;
+                  } catch (err) {
+                    debug('/srv/dest', err.message, err.stack);
+                    results = err.message;
+                  }
+<% if(authorization){ -%>
+                } else {
+                  results = FORBIDDEN;
+                }
+<% } -%>
+                break;
+<% } -%>
+<% if(hana){ -%>
+              case '/srv/sales':
+<% if(authorization){ -%>
+                if (securityContext.checkScope('$XSAPPNAME.User')) {
+<% } -%>
+                  try {
+                    results = hanaClient.exec(`SELECT * FROM "<%= projectName %>.db::sales"`);
+                  } catch (err) {
+                    debug('/srv/sales', err.message, err.stack);
+                    results = err.message;
+                  }
+<% if(authorization){ -%>
+                } else {
+                  results = FORBIDDEN;
+                }
+<% } -%>
+                break;
+              case '/srv/session':
+<% if(authorization){ -%>
+                if (securityContext.checkScope('$XSAPPNAME.Admin')) {
+<% } -%>
+                  try {
+                    results = hanaClient.exec(`SELECT * FROM M_SESSION_CONTEXT`);
+                  } catch (err) {
+                    debug('/srv/session', err.message, err.stack);
+                    results = err.message;
+                  }
+<% if(authorization){ -%>
+                } else {
+                  results = FORBIDDEN;
+                }
+<% } -%>
+                break;
+              case '/srv/db':
+<% if(authorization){ -%>
+                if (securityContext.checkScope('$XSAPPNAME.Admin')) {
+<% } -%>
+                  try {
+                    results = hanaClient.exec(`SELECT SYSTEM_ID, DATABASE_NAME, HOST, VERSION, USAGE FROM M_DATABASE`);
+                  } catch (err) {
+                    debug('/srv/db', err.message, err.stack);
+                    results = err.message;
+                  }
+<% if(authorization){ -%>
+                } else {
+                  results = FORBIDDEN;
+                }
+<% } -%>
+                break;
+              case '/srv/connections':
+<% if(authorization){ -%>
+                if (securityContext.checkScope('$XSAPPNAME.Admin')) {
+<% } -%>
+                  try {
+                    results = hanaClient.exec(`SELECT TOP 10 USER_NAME, CLIENT_IP, CLIENT_HOST, START_TIME FROM M_CONNECTIONS WHERE OWN='TRUE' ORDER BY START_TIME DESC`);
+                  } catch (err) {
+                    debug('/srv/connections', err.message, err.stack);
+                    results = err.message;
+                  }
+<% if(authorization){ -%>
+                } else {
+                  results = FORBIDDEN;
+                }
+<% } -%>
+                break;
+<% } -%>
+              default:
+                results = NOT_FOUND;
+            }
+            return results;
+          }
+        }
+  scaleConfig:
+    maxReplicas: 5
+    minReplicas: 1
+  resourceConfiguration:
+    function:
+      resources:
+        limits:
+          cpu: 1
+          memory: 1Gi
+        requests:
+          cpu: 500m
+          memory: 500Mi
+    build:
+      resources:
+        limits:
+          cpu: 2
+          memory: 2Gi
+        requests:
+          cpu: 1
+          memory: 1Gi
+<% if(authentication || apiS4HC || hana || apiGraph || apiDest){ -%>
+  env:
+    - name: DEBUG
+      value: <%= projectName %>-srv:*
+    - name: SERVICE_BINDING_ROOT
+      value: /bindings
+  secretMounts:
+<% if(authentication || apiS4HC || apiGraph || apiDest){ -%>
+    - secretName: {{ .Values.services.uaa.bindingSecretName }}
+      mountPath: "/bindings/<%= projectName %>-uaa"
+<% } -%>
+<% if(apiS4HC || apiGraph || apiDest){ -%>
+    - secretName: {{ .Values.services.dest.bindingSecretName }}
+      mountPath: "/bindings/<%= projectName %>-dest"
+<% } -%>
+<% if(hana){ -%>
+    - secretName: {{ .Values.services.hdi.bindingSecretName }}
+      mountPath: "/bindings/<%= projectName %>-hdi"
+<% } -%>
+<% } -%>

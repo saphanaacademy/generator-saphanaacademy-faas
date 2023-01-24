@@ -1,0 +1,32 @@
+clusterDomain: <%= clusterDomain %>
+gateway: <%= gateway %>
+services:
+  app:
+    name: <%= projectName %>-app
+    xsapp: <%= projectName %>-app-xs-app
+    resources: <%= projectName %>-app-resources
+    image:
+      dockerID: sapse
+      repository: approuter
+      tag: "13.0.2"
+      pullPolicy: Always
+      port: 5000
+    service:
+      port: 5000
+  srv:
+    name: <%= projectName %>-srv
+    service:
+      port: 80
+<% if(authentication){ -%>
+  uaa:
+    name: <%= projectName %>-uaa
+    bindingName: <%= projectName %>-uaa-binding
+    bindingSecretName: <%= projectName %>-uaa-binding-secret
+<% } -%>
+<% if(externalSessionManagement){ -%>
+  redis:
+    name: <%= projectName %>-redis
+    bindingSecretName: <%= projectName %>-redis-binding-secret
+    service:
+      port: 6379
+<% } -%>
