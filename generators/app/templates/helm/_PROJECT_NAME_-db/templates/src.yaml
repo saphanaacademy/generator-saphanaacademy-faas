@@ -12,6 +12,24 @@ data:
         "amount" INTEGER,
         PRIMARY KEY ("id") 
       )
+  TT_TopSales.hdbtabletype: |
+    TYPE "<%= projectName %>.db::TT_TopSales" AS TABLE (
+      "country" VARCHAR(100),
+      "amount" INTEGER
+    )
+  SP_TopSales.hdbprocedure: |
+    PROCEDURE "<%= projectName %>.db::SP_TopSales" (IN amount INTEGER, OUT result "<%= projectName %>.db::TT_TopSales")
+      LANGUAGE SQLSCRIPT
+      SQL SECURITY INVOKER
+      READS SQL DATA
+      AS
+    BEGIN
+      result = select "country", "amount" 
+                from "<%= projectName %>.db::sales"
+                where "amount" >= :amount
+                order by "amount" desc
+                ;
+    END
   sales.hdbtabledata: |
     {
       "format_version": 1,

@@ -43,6 +43,7 @@ data:
 <% if(hana){ -%>
         <h3>SAP HANA Cloud</h3>
         <a href="/srv/sales">Sales</a><br />
+        <a href="/srv/topSales?amount=500">Top Sales</a><br />
         <h3>Admin</h3>
         <a href="/srv/session">Session</a><br />
         <a href="/srv/db">Database</a><br />

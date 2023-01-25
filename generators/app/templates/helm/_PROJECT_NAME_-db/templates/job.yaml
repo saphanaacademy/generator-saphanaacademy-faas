@@ -40,6 +40,14 @@ spec:
               subPath: "sales.hdbtable"
               readOnly: true
             - name: src
+              mountPath: "/workspace/src/TT_TopSales.hdbtabletype"
+              subPath: "TT_TopSales.hdbtabletype"
+              readOnly: true
+            - name: src
+              mountPath: "/workspace/src/SP_TopSales.hdbprocedure"
+              subPath: "SP_TopSales.hdbprocedure"
+              readOnly: true
+            - name: src
               mountPath: "/workspace/src/sales.hdbtabledata"
               subPath: "sales.hdbtabledata"
               readOnly: true

@@ -18,33 +18,24 @@ spec:
           "version": "0.0.1",
           "dependencies": {
             "debug": "latest"
+<% if(authentication || hana){ -%>
+            ,"@sap/xsenv": "latest"
+<% } -%>
 <% if(authentication){ -%>
-            ,
-            "@sap/xsenv": "latest",
-            "@sap/xssec": "latest"
+            ,"@sap/xssec": "latest"
 <% } -%>
 <% if(hana){ -%>
-<% if(authentication){ -%>
-            ,
-<% } -%>
-            "@sap/hdbext": "latest"
+            ,"@sap/hana-client": "latest"
 <% } -%>
 <% if(apiGraph || apiDest){ -%>
-<% if(authentication || hana){ -%>
-            ,
-<% } -%>
-            "@sap-cloud-sdk/http-client": "latest"
+            ,"@sap-cloud-sdk/http-client": "latest"
 <% } -%>
 <% if(apiS4HC || apiGraph || apiDest){ -%>
-<% if(authentication || hana || apiGraph || apiDest){ -%>
-            ,
-<% } -%>
-            "@sap-cloud-sdk/connectivity": "latest"
+            ,"@sap-cloud-sdk/connectivity": "latest"
 <% } -%>
 <% if(apiS4HC){ -%>
-            ,
-            "@sap-cloud-sdk/odata-v2": "latest",
-            "@sap/cloud-sdk-vdm-sales-order-service": "latest"
+            ,"@sap-cloud-sdk/odata-v2": "latest"
+            ,"@sap/cloud-sdk-vdm-sales-order-service": "latest"
 <% } -%>
           }
         }
@@ -52,7 +43,6 @@ spec:
         const debug = require('debug')('<%= projectName %>-srv:function');
         const NOT_FOUND = 'Not Found';
 <% if(authentication || hana){ -%>
-        const util = require('util');
         const xsenv = require('@sap/xsenv');
         const services = xsenv.getServices({
 <% if(authentication){ -%>
@@ -68,13 +58,15 @@ spec:
 <% } -%>
 <% if(authentication){ -%>
         const FORBIDDEN = 'Forbidden';
+        const util = require('util');
         const xssec = require('@sap/xssec');
         const createSecurityContext = util.promisify(xssec.createSecurityContext);
 <% } -%>
 <% if(hana){ -%>
-        const UNABLE_TO_CONNECT_TO_HANA = 'Unable to connect to SAP HANA Cloud';
-        const hdbext = require('@sap/hdbext');
-        const createConnection = util.promisify(hdbext.createConnection);
+        const hana = require('@sap/hana-client');
+        services.hana.sslValidateCertificate = true;
+        services.hana.ssltruststore = services.hana.certificate;
+        const hanaConn = hana.createConnection();
 <% } -%>
 <% if(apiGraph || apiDest){ -%>
         const httpClient = require('@sap-cloud-sdk/http-client');
@@ -86,7 +78,7 @@ spec:
         const { desc } = require('@sap-cloud-sdk/odata-v2');
         const { salesOrderService } = require('@sap/cloud-sdk-vdm-sales-order-service');
         const { salesOrderApi, salesOrderItemApi } = salesOrderService();
-        function getSalesOrders(req) {
+        async function getSalesOrders(req) {
           return salesOrderApi.requestBuilder()
             .getAll()
             .filter(salesOrderApi.schema.TOTAL_NET_AMOUNT.greaterThan(2000))
@@ -123,15 +115,6 @@ spec:
             } else {
               debug('Create Security Context', 'Invalid Headers - Missing Access Token');
               return FORBIDDEN;
-            }
-<% } -%>
-<% if(hana){ -%>
-            var hanaClient;
-            try {
-              hanaClient = await createConnection(services.hana);
-            } catch (err) {
-              debug('Connect to SAP HANA Cloud', err.message, err.stack);
-              return UNABLE_TO_CONNECT_TO_HANA;
             }
 <% } -%>
             switch(req.path) {
@@ -179,10 +162,7 @@ spec:
 <% if(authorization){ -%>
                 if (securityContext.checkScope('$XSAPPNAME.User')) {
 <% } -%>
-                  await getSalesOrders(req)
-                    .then(salesOrders => {
-                      results = salesOrders;
-                  });
+                  results = await getSalesOrders(req);
 <% if(authorization){ -%>
                 } else {
                   results = FORBIDDEN;
@@ -286,9 +266,32 @@ spec:
                 if (securityContext.checkScope('$XSAPPNAME.User')) {
 <% } -%>
                   try {
-                    results = hanaClient.exec(`SELECT * FROM "<%= projectName %>.db::sales"`);
+                    await hanaConn.connect(services.hana);
+                    await hanaConn.exec('SET SCHEMA ' + services.hana.schema);
+                    results = await hanaConn.exec(`SELECT * FROM "<%= projectName %>.db::sales"`);
+                    await hanaConn.disconnect();
                   } catch (err) {
                     debug('/srv/sales', err.message, err.stack);
+                    results = err.message;
+                  }
+<% if(authorization){ -%>
+                } else {
+                  results = FORBIDDEN;
+                }
+<% } -%>
+                break;
+              case '/srv/topSales':
+<% if(authorization){ -%>
+                if (securityContext.checkScope('$XSAPPNAME.User')) {
+<% } -%>
+                  try {
+                    await hanaConn.connect(services.hana);
+                    await hanaConn.exec('SET SCHEMA ' + services.hana.schema);
+                    let hanaStmt = await hanaConn.prepare(`CALL "<%= projectName %>.db::SP_TopSales"(?,?)`);
+                    results = hanaStmt.exec([req.query.amount]);
+                    await hanaConn.disconnect();
+                  } catch (err) {
+                    debug('/srv/topSales', err.message, err.stack);
                     results = err.message;
                   }
 <% if(authorization){ -%>
@@ -302,7 +305,9 @@ spec:
                 if (securityContext.checkScope('$XSAPPNAME.Admin')) {
 <% } -%>
                   try {
-                    results = hanaClient.exec(`SELECT * FROM M_SESSION_CONTEXT`);
+                    await hanaConn.connect(services.hana);
+                    results = await hanaConn.exec(`SELECT * FROM M_SESSION_CONTEXT`);
+                    await hanaConn.disconnect();
                   } catch (err) {
                     debug('/srv/session', err.message, err.stack);
                     results = err.message;
@@ -318,7 +323,9 @@ spec:
                 if (securityContext.checkScope('$XSAPPNAME.Admin')) {
 <% } -%>
                   try {
-                    results = hanaClient.exec(`SELECT SYSTEM_ID, DATABASE_NAME, HOST, VERSION, USAGE FROM M_DATABASE`);
+                    await hanaConn.connect(services.hana);
+                    results = await hanaConn.exec(`SELECT SYSTEM_ID, DATABASE_NAME, HOST, VERSION, USAGE FROM M_DATABASE`);
+                    await hanaConn.disconnect();
                   } catch (err) {
                     debug('/srv/db', err.message, err.stack);
                     results = err.message;
@@ -334,7 +341,9 @@ spec:
                 if (securityContext.checkScope('$XSAPPNAME.Admin')) {
 <% } -%>
                   try {
-                    results = hanaClient.exec(`SELECT TOP 10 USER_NAME, CLIENT_IP, CLIENT_HOST, START_TIME FROM M_CONNECTIONS WHERE OWN='TRUE' ORDER BY START_TIME DESC`);
+                    await hanaConn.connect(services.hana);
+                    results = await hanaConn.exec(`SELECT TOP 10 USER_NAME, CLIENT_IP, CLIENT_HOST, START_TIME FROM M_CONNECTIONS WHERE OWN='TRUE' ORDER BY START_TIME DESC`);
+                    await hanaConn.disconnect();
                   } catch (err) {
                     debug('/srv/connections', err.message, err.stack);
                     results = err.message;
@@ -375,7 +384,7 @@ spec:
 <% if(authentication || apiS4HC || hana || apiGraph || apiDest){ -%>
   env:
     - name: DEBUG
-      value: <%= projectName %>-srv:*
+      value: '<%= projectName %>-srv:*'
     - name: SERVICE_BINDING_ROOT
       value: /bindings
   secretMounts:
