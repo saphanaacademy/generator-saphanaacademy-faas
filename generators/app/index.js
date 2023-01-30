@@ -49,6 +49,7 @@ module.exports = class extends Generator {
     answers.BTPRuntime = "Kyma";
     answers.namespace = "default";
     answers.kubeconfig = "";
+    answers.runtime = "nodejs16";
     answers.apiS4HC = false;
     answers.apiGraph = false;
     answers.apiGraphURL = "https://<region>.graph.sap/api";
@@ -72,10 +73,10 @@ module.exports = class extends Generator {
         name: "projectName",
         message: "What project name would you like?",
         validate: (s) => {
-          if (/^[a-zA-Z0-9_-]*$/g.test(s)) {
+          if (/^[a-zA-Z][a-zA-Z0-9]*$/g.test(s)) {
             return true;
           }
-          return "Please only use alphanumeric characters for the project name.";
+          return "Please start with a letter and only use alphanumeric characters for the project name.";
         },
         default: answers.projectName
       },
@@ -115,16 +116,27 @@ module.exports = class extends Generator {
         name: "kubeconfig",
         message: "What is the path of your Kubeconfig file? Leave blank to use the KUBECONFIG environment variable instead.",
         default: answers.kubeconfig
+      },
+      {
+        when: response => response.BTPRuntime === "Kyma",
+        type: "list",
+        name: "runtime",
+        message: "What runtime would you like?",
+        choices: [{ name: "Node.js 16", value: "nodejs16"}, {name: "Python 3.9", value: "python39" }],
+        store: true,
+        default: answers.runtime
       }
     ]);
     const answersAPI = await this.prompt([
       {
+        when: answersRuntime.runtime !== "python39",
         type: "confirm",
         name: "apiS4HC",
         message: "Would you like to access the SAP S/4HANA Cloud Sales Orders API?",
         default: answers.apiS4HC
       },
       {
+        when: answersRuntime.runtime !== "python39",
         type: "confirm",
         name: "apiGraph",
         message: "Would you like to use SAP Graph?",
@@ -154,7 +166,7 @@ module.exports = class extends Generator {
       {
         type: "confirm",
         name: "apiDest",
-        message: "Would you like to test the Destination service with SAP Cloud SDK?",
+        message: "Would you like to test the SAP Destination service?",
         default: answers.apiDest
       }
     ]);
@@ -283,7 +295,7 @@ module.exports = class extends Generator {
           if (!((file.substring(0, 5) === 'helm/' || file.includes('/Dockerfile') || file === 'dotdockerignore' || file === 'Makefile') && answers.get('BTPRuntime') !== 'Kyma')) {
             if (!(file.includes('helm/_PROJECT_NAME_-app') && answers.get('ui') === false)) {
               if (!(file.includes('helm/_PROJECT_NAME_-db') && answers.get('hana') === false)) {
-                if (!((file.includes('service-uaa.yaml') || file.includes('binding-uaa.yaml')) && answers.get('authentication') === false && answers.get('apiS4HC') === false && answers.get('apiGraph') === false && answers.get('apiDest') === false)) {
+                if (!((file.includes('service-uaa.yaml') || file.includes('binding-uaa.yaml')) && answers.get('authentication') === false && answers.get('apiS4HC') === false && answers.get('apiGraph') === false && (answers.get('apiDest') === false || (answers.get('apiDest') === true && answers.get('runtime') === 'python39')))) {
                   if (!((file.includes('service-dest.yaml') || file.includes('binding-dest.yaml')) && answers.get('apiS4HC') === false && answers.get('apiGraph') === false && answers.get('apiDest') === false)) {
                     if (!((file.includes('-redis.yaml') || file.includes('destinationrule.yaml')) && answers.get('externalSessionManagement') === false)) {
                       const sOrigin = this.templatePath(file);

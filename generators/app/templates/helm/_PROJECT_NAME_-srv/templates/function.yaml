@@ -7,11 +7,12 @@ metadata:
     app: {{ .Values.services.srv.name }}
 spec:
   runtime: {{ .Values.services.srv.runtime }}
-<% if(hana){ -%>
-  runtimeImageOverride: hanaacademy/kyma-serverless-hanacloud:latest
+<% if((hana && runtime === "nodejs16") || ((hana || authentication) && runtime === "python39")){ -%>
+  runtimeImageOverride: {{ .Values.services.srv.runtimeImageOverride }}
 <% } -%>
   source:
     inline:
+<% if(runtime === "nodejs16"){ -%>
       dependencies: |
         {
           "name": "{{ .Values.services.srv.name }}",
@@ -42,6 +43,7 @@ spec:
       source: |
         const debug = require('debug')('<%= projectName %>-srv:function');
         const NOT_FOUND = 'Not Found';
+
 <% if(authentication || hana){ -%>
         const xsenv = require('@sap/xsenv');
         const services = xsenv.getServices({
@@ -55,18 +57,51 @@ spec:
           hana: { label: 'hana' }
 <% } -%>
         });
+
 <% } -%>
 <% if(authentication){ -%>
-        const FORBIDDEN = 'Forbidden';
+        const UNAUTHORIZED = '401 Unauthorized';
+        const FORBIDDEN = '403 Forbidden';
         const util = require('util');
         const xssec = require('@sap/xssec');
         const createSecurityContext = util.promisify(xssec.createSecurityContext);
+
 <% } -%>
 <% if(hana){ -%>
         const hana = require('@sap/hana-client');
         services.hana.sslValidateCertificate = true;
         services.hana.ssltruststore = services.hana.certificate;
         const hanaConn = hana.createConnection();
+
+        async function queryDB(sql, procedure, param) {
+          try {
+            await hanaConn.connect(services.hana);
+          } catch (err) {
+            debug('queryDB connect', err.message, err.stack);
+            results = err.message;
+          }
+          try {
+            await hanaConn.exec('SET SCHEMA ' + services.hana.schema);
+            if (procedure === undefined) {
+              results = await hanaConn.exec(sql);
+            }
+            else {
+              let hanaStmt = await hanaConn.prepare(procedure);
+              results = hanaStmt.exec(param);
+            }
+          } catch (err) {
+            debug('queryDB exec', err.message, err.stack);
+            results = err.message;
+          }
+          try {
+            await hanaConn.disconnect();
+          } catch (err) {
+            debug('queryDB disconnect', err.message, err.stack);
+            results = err.message;
+          }
+          return results;
+        }
+
 <% } -%>
 <% if(apiGraph || apiDest){ -%>
         const httpClient = require('@sap-cloud-sdk/http-client');
@@ -99,36 +134,40 @@ spec:
 <% } -%>
             });
         }
+
 <% } -%>
         module.exports = {
           main: async function (event, context) {
             let req = event.extensions.request;
+
 <% if(authentication){ -%>
             let securityContext;
             if (typeof req.headers.authorization === 'string' && req.headers.authorization.split(' ').length > 1 && req.headers.authorization.split(' ')[0].toLowerCase() === 'bearer') {
               try {
-                  securityContext = await createSecurityContext(req.headers.authorization.split(' ')[1], services.uaa);
+                securityContext = await createSecurityContext(req.headers.authorization.split(' ')[1], services.uaa);
               } catch (err) {
                 debug('Create Security Context', err.message);
-                return FORBIDDEN;
+                return UNAUTHORIZED;
               }
             } else {
               debug('Create Security Context', 'Invalid Headers - Missing Access Token');
-              return FORBIDDEN;
+              return UNAUTHORIZED;
             }
 <% } -%>
+
             switch(req.path) {
               case '/srv/':
 <% if(authorization){ -%>
                 if (securityContext.checkScope('$XSAPPNAME.User')) {
 <% } -%>
-                  results = context['function-name'];
+                  results = '<%= projectName %>';
 <% if(authorization){ -%>
                 } else {
                   results = FORBIDDEN;
                 }
 <% } -%>
                 break;
+
 <% if(authentication){ -%>
               case '/srv/user':
 <% if(authorization){ -%>
@@ -156,6 +195,7 @@ spec:
                 }
 <% } -%>
                 break;
+
 <% } -%>
 <% if(apiS4HC){ -%>
               case '/srv/salesorders':
@@ -169,6 +209,7 @@ spec:
                 }
 <% } -%>
                 break;
+
 <% } -%>
 <% if(apiGraph){ -%>
               case '/srv/graph':
@@ -228,6 +269,7 @@ spec:
                 }
 <% } -%>
                 break;
+
 <% } -%>
 <% if(apiDest){ -%>
               case '/srv/dest':
@@ -259,108 +301,285 @@ spec:
                 }
 <% } -%>
                 break;
+
 <% } -%>
 <% if(hana){ -%>
               case '/srv/sales':
 <% if(authorization){ -%>
                 if (securityContext.checkScope('$XSAPPNAME.User')) {
 <% } -%>
-                  try {
-                    await hanaConn.connect(services.hana);
-                    await hanaConn.exec('SET SCHEMA ' + services.hana.schema);
-                    results = await hanaConn.exec(`SELECT * FROM "<%= projectName %>.db::sales"`);
-                    await hanaConn.disconnect();
-                  } catch (err) {
-                    debug('/srv/sales', err.message, err.stack);
-                    results = err.message;
-                  }
+                  results = await queryDB(`SELECT * FROM "<%= projectName %>.db::sales"`);
 <% if(authorization){ -%>
                 } else {
                   results = FORBIDDEN;
                 }
 <% } -%>
                 break;
+
               case '/srv/topSales':
 <% if(authorization){ -%>
                 if (securityContext.checkScope('$XSAPPNAME.User')) {
 <% } -%>
-                  try {
-                    await hanaConn.connect(services.hana);
-                    await hanaConn.exec('SET SCHEMA ' + services.hana.schema);
-                    let hanaStmt = await hanaConn.prepare(`CALL "<%= projectName %>.db::SP_TopSales"(?,?)`);
-                    results = hanaStmt.exec([req.query.amount]);
-                    await hanaConn.disconnect();
-                  } catch (err) {
-                    debug('/srv/topSales', err.message, err.stack);
-                    results = err.message;
-                  }
+                  let amount = req.query.amount ?? 0;
+                  results = await queryDB('', `CALL "<%= projectName %>.db::SP_TopSales"(?,?)`,[amount]);
 <% if(authorization){ -%>
                 } else {
                   results = FORBIDDEN;
                 }
 <% } -%>
                 break;
+
               case '/srv/session':
 <% if(authorization){ -%>
                 if (securityContext.checkScope('$XSAPPNAME.Admin')) {
 <% } -%>
-                  try {
-                    await hanaConn.connect(services.hana);
-                    results = await hanaConn.exec(`SELECT * FROM M_SESSION_CONTEXT`);
-                    await hanaConn.disconnect();
-                  } catch (err) {
-                    debug('/srv/session', err.message, err.stack);
-                    results = err.message;
-                  }
+                  results = await queryDB(`SELECT * FROM M_SESSION_CONTEXT`);
 <% if(authorization){ -%>
                 } else {
                   results = FORBIDDEN;
                 }
 <% } -%>
                 break;
+
               case '/srv/db':
 <% if(authorization){ -%>
                 if (securityContext.checkScope('$XSAPPNAME.Admin')) {
 <% } -%>
-                  try {
-                    await hanaConn.connect(services.hana);
-                    results = await hanaConn.exec(`SELECT SYSTEM_ID, DATABASE_NAME, HOST, VERSION, USAGE FROM M_DATABASE`);
-                    await hanaConn.disconnect();
-                  } catch (err) {
-                    debug('/srv/db', err.message, err.stack);
-                    results = err.message;
-                  }
+                  results = await queryDB(`SELECT SYSTEM_ID, DATABASE_NAME, HOST, VERSION, USAGE FROM M_DATABASE`);
 <% if(authorization){ -%>
                 } else {
                   results = FORBIDDEN;
                 }
 <% } -%>
                 break;
+
               case '/srv/connections':
 <% if(authorization){ -%>
                 if (securityContext.checkScope('$XSAPPNAME.Admin')) {
 <% } -%>
-                  try {
-                    await hanaConn.connect(services.hana);
-                    results = await hanaConn.exec(`SELECT TOP 10 USER_NAME, CLIENT_IP, CLIENT_HOST, START_TIME FROM M_CONNECTIONS WHERE OWN='TRUE' ORDER BY START_TIME DESC`);
-                    await hanaConn.disconnect();
-                  } catch (err) {
-                    debug('/srv/connections', err.message, err.stack);
-                    results = err.message;
-                  }
+                  results = await queryDB(`SELECT TOP 10 USER_NAME, CLIENT_IP, CLIENT_HOST, START_TIME FROM M_CONNECTIONS WHERE OWN='TRUE' ORDER BY START_TIME DESC`);
 <% if(authorization){ -%>
                 } else {
                   results = FORBIDDEN;
                 }
 <% } -%>
                 break;
+
 <% } -%>
               default:
                 results = NOT_FOUND;
             }
+
             return results;
           }
         }
+<% } -%>
+<% if(runtime === "python39"){ -%>
+      source: |-
+        NOT_FOUND = "Not Found"
+
+<% if(authentication || hana || apiDest){ -%>
+        import os
+        from os import path
+
+<% } -%>
+<% if(authentication){ -%>
+        UNAUTHORIZED = "401 Unauthorized"
+        FORBIDDEN = "403 Forbidden"
+        from sap import xssec
+        UAA_ROOT = os.environ.get("SERVICE_BINDING_ROOT") + "/<%= projectName %>-uaa"
+        with open(path.join(UAA_ROOT, "clientid"), "r") as f:
+          uaa_clientid = f.read()
+        with open(path.join(UAA_ROOT, "clientsecret"), "r") as f:
+          uaa_clientsecret = f.read()
+        with open(path.join(UAA_ROOT, "url"), "r") as f:
+          uaa_url = f.read()
+        with open(path.join(UAA_ROOT, "verificationkey"), "r") as f:
+          uaa_verificationkey = f.read()
+        with open(path.join(UAA_ROOT, "xsappname"), "r") as f:
+          uaa_xsappname = f.read()
+        uaa_service = {"clientid": uaa_clientid, "clientsecret": uaa_clientsecret, "url": uaa_url, "verificationkey": uaa_verificationkey, "xsappname": uaa_xsappname}
+
+<% } -%>
+<% if(apiDest){ -%>
+        import requests
+        DEST_ROOT = os.environ.get("SERVICE_BINDING_ROOT") + "/<%= projectName %>-dest"
+        with open(path.join(DEST_ROOT, "clientid"), "r") as f:
+          dest_clientid = f.read()
+        with open(path.join(DEST_ROOT, "clientsecret"), "r") as f:
+          dest_clientsecret = f.read()
+        with open(path.join(DEST_ROOT, "uri"), "r") as f:
+          dest_uri = f.read()
+        with open(path.join(DEST_ROOT, "url"), "r") as f:
+          dest_url = f.read()
+        def api_dest(destination, path=""):
+          token = requests.post(dest_url + "/oauth/token?grant_type=client_credentials", auth=(dest_clientid,dest_clientsecret)).json()["access_token"]
+          url = requests.get(dest_uri + "/destination-configuration/v1/destinations/" + destination, headers={"Authorization": "Bearer " + token}).json()["destinationConfiguration"]["URL"]
+          results = requests.get(url + "/" + path, headers={"Accept": "Application/json"}).json()
+          return results
+
+<% } -%>
+<% if(hana){ -%>
+        import json
+        from hdbcli import dbapi
+        HDI_ROOT = os.environ.get("SERVICE_BINDING_ROOT") + "/<%= projectName %>-hdi"
+        with open(path.join(HDI_ROOT, "host"), "r") as f:
+          hana_host = f.read()
+        with open(path.join(HDI_ROOT, "port"), "r") as f:
+          hana_port = f.read()
+        with open(path.join(HDI_ROOT, "schema"), "r") as f:
+          hana_schema = f.read()
+        with open(path.join(HDI_ROOT, "user"), "r") as f:
+          hana_user = f.read()
+        with open(path.join(HDI_ROOT, "password"), "r") as f:
+          hana_password = f.read()
+
+        def query_hana(sql, procedure="", param=""):
+          try:
+            conn = dbapi.connect(address=hana_host, port=int(hana_port), encrypt=True, user=hana_user, password=hana_password, currentSchema=hana_schema)
+          except dbapi.Error as err:
+            results = format(err)
+          else:
+            with conn.cursor() as cursor:
+              try:
+                if procedure != "":
+                  cursor.callproc(procedure,(param,0))
+                else:
+                  cursor.execute(sql)
+              except dbapi.Error as err:
+                results = format(err)
+              else:
+                rows = cursor.fetchall()
+                # convert to JSON
+                results = []
+                for row in rows:
+                  this_row = {}
+                  for index, column in enumerate(row):
+                    this_row[cursor.description[index][0]] = column
+                  results.append(this_row)
+                cursor.close()
+                results = json.dumps(results)
+            try:
+              conn.close()
+            except dbapi.Error as err:
+              results = format(err)
+            return results
+
+<% } -%>
+        def main(event, context):
+<% if(authentication){ -%>
+          token = event["extensions"]["request"].headers.get("Authorization")
+          if token:
+            token = token.split(" ")[1]
+          else:
+            return UNAUTHORIZED
+          try:
+            security_context = xssec.create_security_context(token, uaa_service)
+          except:
+            return UNAUTHORIZED
+
+<% } -%>
+          url_path = event["extensions"]["request"].path
+          if url_path == "/srv/":
+<% if(authorization){ -%>
+            if security_context.check_scope("$XSAPPNAME.User"):
+<% } -%>
+              results = '<%= projectName %>';
+<% if(authorization){ -%>
+            else:
+              results = FORBIDDEN
+<% } -%>
+
+<% if(authentication){ -%>
+          elif url_path == "/srv/user":
+<% if(authorization){ -%>
+            if security_context.check_scope("$XSAPPNAME.User"):
+<% } -%>
+              results = {"logonName": security_context.get_logon_name(), "givenName": security_context.get_given_name(), "familyName": security_context.get_family_name(), "email": security_context.get_email(), "scopeUser": security_context.check_scope("$XSAPPNAME.User"), "scopeAdmin": security_context.check_scope("$XSAPPNAME.Admin")}
+<% if(authorization){ -%>
+            else:
+              results = FORBIDDEN
+<% } -%>
+
+<% } -%>
+<% if(apiDest){ -%>
+          elif url_path == "/srv/dest":
+<% if(authorization){ -%>
+            if security_context.check_scope("$XSAPPNAME.User"):
+<% } -%>
+              destination = event["extensions"]["request"].query.destination
+              if not destination:
+                destination = "<%= projectName %>-nw"
+              path = event["extensions"]["request"].query.path
+              if not path:
+                path = ""
+              results = api_dest(destination, path)
+<% if(authorization){ -%>
+            else:
+              results = FORBIDDEN
+<% } -%>
+
+<% } -%>
+<% if(hana){ -%>
+          elif url_path == "/srv/sales":
+<% if(authorization){ -%>
+            if security_context.check_scope("$XSAPPNAME.User"):
+<% } -%>
+              results = query_hana('SELECT * FROM "<%= projectName %>.db::sales"')
+<% if(authorization){ -%>
+            else:
+              results = FORBIDDEN
+<% } -%>
+
+          elif url_path == "/srv/topSales":
+<% if(authorization){ -%>
+            if security_context.check_scope("$XSAPPNAME.User"):
+<% } -%>
+              amount = event["extensions"]["request"].query.amount
+              if not amount:
+                amount = 0
+              results = query_hana("",'"<%= projectName %>.db::SP_TopSales"', amount)
+<% if(authorization){ -%>
+            else:
+              results = FORBIDDEN
+<% } -%>
+
+          elif url_path == "/srv/session":
+<% if(authorization){ -%>
+            if security_context.check_scope("$XSAPPNAME.Admin"):
+<% } -%>
+              results = query_hana("SELECT * FROM M_SESSION_CONTEXT")
+<% if(authorization){ -%>
+            else:
+              results = FORBIDDEN
+<% } -%>
+
+          elif url_path == "/srv/db":
+<% if(authorization){ -%>
+            if security_context.check_scope("$XSAPPNAME.Admin"):
+<% } -%>
+              results = query_hana("SELECT SYSTEM_ID, DATABASE_NAME, HOST, VERSION, USAGE FROM M_DATABASE")
+<% if(authorization){ -%>
+            else:
+              results = FORBIDDEN
+<% } -%>
+
+          elif url_path == "/srv/connections":
+<% if(authorization){ -%>
+            if security_context.check_scope("$XSAPPNAME.Admin"):
+<% } -%>
+              results = query_hana("SELECT TOP 10 USER_NAME, CLIENT_IP, CLIENT_HOST, TO_NVARCHAR(START_TIME) AS START_TIME FROM M_CONNECTIONS WHERE OWN='TRUE' ORDER BY START_TIME DESC")
+<% if(authorization){ -%>
+            else:
+              results = FORBIDDEN
+<% } -%>
+
+<% } -%>
+          else:
+            results = NOT_FOUND
+
+          return results
+<% } -%>
   scaleConfig:
     maxReplicas: 5
     minReplicas: 1
@@ -383,12 +602,14 @@ spec:
           memory: 1Gi
 <% if(authentication || apiS4HC || hana || apiGraph || apiDest){ -%>
   env:
-    - name: DEBUG
-      value: '<%= projectName %>-srv:*'
     - name: SERVICE_BINDING_ROOT
       value: /bindings
+<% if(runtime === "nodejs16"){ -%>
+    - name: DEBUG
+      value: '<%= projectName %>-srv:*'
+<% } -%>
   secretMounts:
-<% if(authentication || apiS4HC || apiGraph || apiDest){ -%>
+<% if(authentication || apiS4HC || apiGraph || (apiDest && runtime !== "python39")){ -%>
     - secretName: {{ .Values.services.uaa.bindingSecretName }}
       mountPath: "/bindings/<%= projectName %>-uaa"
 <% } -%>

@@ -6,8 +6,11 @@ services:
   srv:
     name: <%= projectName %>-srv
     port: '80'
-    runtime: nodejs16
-<% if(authentication || apiS4HC || apiGraph || apiDest){ -%>
+    runtime: <%= runtime %>
+<% if((hana && runtime === "nodejs16") || ((hana || authentication) && runtime === "python39")){ -%>
+    runtimeImageOverride: hanaacademy/kyma-faas:<%= runtime %>
+<% } -%>
+<% if(authentication || apiS4HC || apiGraph || (apiDest && runtime !== "python39")){ -%>
   uaa:
     name: <%= projectName %>-uaa
     xsappname: <%= projectName %>
