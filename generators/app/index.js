@@ -22,6 +22,10 @@ module.exports = class extends Generator {
         description: "Choose and configure your runtime."
       },
       {
+        name: "Source Attributes",
+        description: "Configure source attributes"
+      },
+      {
         name: "API Selection",
         description: "Choose and configure APIs."
       },
@@ -50,6 +54,14 @@ module.exports = class extends Generator {
     answers.namespace = "default";
     answers.kubeconfig = "";
     answers.runtime = "nodejs16";
+    answers.source = "inline";
+    answers.gitURL = "https://github.com/<username>/<repository>.git";
+    answers.gitBaseDir = "";
+    answers.gitReference = "main";
+    answers.gitAuth = "none";
+    answers.gitUsername = "";
+    answers.gitPassword = "";
+    answers.gitKey = "/Users/<user>/.ssh/id_ed25519";
     answers.apiS4HC = false;
     answers.apiGraph = false;
     answers.apiGraphURL = "https://<region>.graph.sap/api";
@@ -122,9 +134,73 @@ module.exports = class extends Generator {
         type: "list",
         name: "runtime",
         message: "What runtime would you like?",
-        choices: [{ name: "Node.js 16", value: "nodejs16"}, {name: "Python 3.9", value: "python39" }],
+        choices: [{ name: "Node.js 16", value: "nodejs16" }, { name: "Python 3.9", value: "python39" }],
         store: true,
         default: answers.runtime
+      }
+    ]);
+    answersProject.gitBaseDir = answersProject.projectName + "-srv";
+    const answersSource = await this.prompt([
+      {
+        when: answers.BTPRuntime === "Kyma",
+        type: "list",
+        name: "source",
+        message: "Where would you like the source?",
+        choices: [{ name: "Inline", value: "inline" }, { name: "Git", value: "git" }],
+        store: true,
+        default: answers.source
+      },
+      {
+        when: response => response.source === "git",
+        type: "input",
+        name: "gitURL",
+        message: "What is your Git URL?",
+        default: answers.gitURL
+      },
+      {
+        when: response => response.source === "git",
+        type: "input",
+        name: "gitBaseDir",
+        message: "What is your Git base directory?",
+        default: answersProject.gitBaseDir
+      },
+      {
+        when: response => response.source === "git",
+        type: "input",
+        name: "gitReference",
+        message: "What is your Git reference (eg: branch)?",
+        default: answers.gitReference
+      },
+      {
+        when: response => response.source === "git",
+        type: "list",
+        name: "gitAuth",
+        message: "What authentication does your repository require?",
+        choices: [{ name: "None", value: "none" }, { name: "Basic", value: "basic" }, { name: "SSH Key", value: "key" }],
+        store: true,
+        default: answers.gitAuth
+      },
+      {
+        when: response => response.gitAuth === "basic",
+        type: "input",
+        name: "gitUsername",
+        message: "What is your Git Username?",
+        default: answers.gitUsername
+      },
+      {
+        when: response => response.gitAuth === "basic",
+        type: "password",
+        name: "gitPassword",
+        message: "What is your Git Password or Token?",
+        mask: "*",
+        default: answers.gitPassword
+      },
+      {
+        when: response => response.gitAuth === "key",
+        type: "input",
+        name: "gitKey",
+        message: "What is the path to your Git Private SSH Key?",
+        default: answers.gitKey
       }
     ]);
     const answersAPI = await this.prompt([
@@ -259,6 +335,7 @@ module.exports = class extends Generator {
         default: answers.externalSessionManagement
       },
       {
+        when: answersSource.source === "inline",
         type: "confirm",
         name: "buildDeploy",
         message: "Would you like to deploy the project?",
@@ -275,12 +352,13 @@ module.exports = class extends Generator {
     this.config.set(answers);
     this.config.set(answersProject);
     this.config.set(answersRuntime);
+    this.config.set(answersSource);
     this.config.set(answersAPI);
     this.config.set(answersAdditional);
     this.config.set(answersFurther);
   }
 
-  writing() {
+  async writing() {
     var answers = this.config;
     // scaffold the project
     this.sourceRoot(path.join(__dirname, "templates"));
@@ -293,18 +371,22 @@ module.exports = class extends Generator {
       .forEach((file) => {
         if (!(file.includes('.DS_Store'))) {
           if (!((file.substring(0, 5) === 'helm/' || file.includes('/Dockerfile') || file === 'dotdockerignore' || file === 'Makefile') && answers.get('BTPRuntime') !== 'Kyma')) {
-            if (!(file.includes('helm/_PROJECT_NAME_-app') && answers.get('ui') === false)) {
-              if (!(file.includes('helm/_PROJECT_NAME_-db') && answers.get('hana') === false)) {
-                if (!((file.includes('service-uaa.yaml') || file.includes('binding-uaa.yaml')) && answers.get('authentication') === false && answers.get('apiS4HC') === false && answers.get('apiGraph') === false && (answers.get('apiDest') === false || (answers.get('apiDest') === true && answers.get('runtime') === 'python39')))) {
-                  if (!((file.includes('service-dest.yaml') || file.includes('binding-dest.yaml')) && answers.get('apiS4HC') === false && answers.get('apiGraph') === false && answers.get('apiDest') === false)) {
-                    if (!((file.includes('-redis.yaml') || file.includes('destinationrule.yaml')) && answers.get('externalSessionManagement') === false)) {
-                      const sOrigin = this.templatePath(file);
-                      let fileDest = file;
-                      fileDest = fileDest.replace('_PROJECT_NAME_', answers.get('projectName'));
-                      fileDest = fileDest.replace('dotgitignore', '.gitignore');
-                      fileDest = fileDest.replace('dotdockerignore', '.dockerignore');
-                      const sTarget = this.destinationPath(fileDest);
-                      this.fs.copyTpl(sOrigin, sTarget, this.config.getAll());
+            if (!((file.includes('_PROJECT_NAME_-srv/handler.js') || file.includes('_PROJECT_NAME_-srv/package.json')) && answers.get('runtime') !== "nodejs16")) {
+              if (!((file.includes('_PROJECT_NAME_-srv/handler.py') || file.includes('_PROJECT_NAME_-srv/requirements.txt')) && answers.get('runtime') !== "python39")) {
+                if (!(file.includes('helm/_PROJECT_NAME_-app') && answers.get('ui') === false)) {
+                  if (!(file.includes('helm/_PROJECT_NAME_-db') && answers.get('hana') === false)) {
+                    if (!((file.includes('service-uaa.yaml') || file.includes('binding-uaa.yaml')) && answers.get('authentication') === false && answers.get('apiS4HC') === false && answers.get('apiGraph') === false && (answers.get('apiDest') === false || (answers.get('apiDest') === true && answers.get('runtime') === 'python39')))) {
+                      if (!((file.includes('service-dest.yaml') || file.includes('binding-dest.yaml')) && answers.get('apiS4HC') === false && answers.get('apiGraph') === false && answers.get('apiDest') === false)) {
+                        if (!((file.includes('-redis.yaml') || file.includes('destinationrule.yaml')) && answers.get('externalSessionManagement') === false)) {
+                          const sOrigin = this.templatePath(file);
+                          let fileDest = file;
+                          fileDest = fileDest.replace('_PROJECT_NAME_', answers.get('projectName'));
+                          fileDest = fileDest.replace('dotgitignore', '.gitignore');
+                          fileDest = fileDest.replace('dotdockerignore', '.dockerignore');
+                          const sTarget = this.destinationPath(fileDest);
+                          this.fs.copyTpl(sOrigin, sTarget, this.config.getAll());
+                        }
+                      }
                     }
                   }
                 }
@@ -317,18 +399,17 @@ module.exports = class extends Generator {
 
   async install() {
     var answers = this.config;
+    const fs2 = require('fs');
+    const destinationRoot = this.destinationRoot();
     var opt = { "cwd": answers.get("destinationPath") };
     if (answers.get('BTPRuntime') === "Kyma") {
       // Kyma runtime
-      const yaml = require('js-yaml');
-      const fs2 = require('fs');
-      let cmd;
+      const k8s = require('@kubernetes/client-node');
+      const kc = new k8s.KubeConfig();
+      kc.loadFromDefault();
+      const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
       if (answers.get("externalSessionManagement") === true) {
         // generate secret
-        const k8s = require('@kubernetes/client-node');
-        const kc = new k8s.KubeConfig();
-        kc.loadFromDefault();
-        let k8sApi = kc.makeApiClient(k8s.CoreV1Api);
         this.log('Creating the external session management secret...');
         let pwdgen = require('generate-password');
         let redisPassword = pwdgen.generate({
@@ -369,15 +450,110 @@ module.exports = class extends Generator {
           k8sSecret
         ).catch(e => this.log("createNamespacedSecret:", e.response.body));
       }
-      if (answers.get("buildDeploy")) {
-        this.spawnCommandSync("make", ["helm-deploy"], opt);
-      } else {
-        this.log("");
-        this.log("You can deploy your project as follows:");
-        this.log(" cd " + answers.get("projectName"));
-        this.log(" make helm-deploy");
+      if (answers.get("source") === "git" && answers.get("gitAuth") !== "none") {
+        // generate secret
+        this.log('Creating the Git secret...');
+        let k8sSecret = {
+          apiVersion: 'v1',
+          kind: 'Secret',
+          metadata: {
+            name: answers.get('projectName') + '-git-creds',
+            labels: {
+              'app.kubernetes.io/managed-by': answers.get('projectName') + '-srv'
+            }
+          },
+          type: 'Opaque',
+          data: {}
+        };
+        if (answers.get("gitAuth") === "basic") {
+          k8sSecret.data.username = Buffer.from(answers.get("gitUsername"), 'utf-8').toString('base64');
+          k8sSecret.data.password = Buffer.from(answers.get("gitPassword"), 'utf-8').toString('base64');
+        } else if (answers.get("gitAuth") === "key") {
+          let privateKey = fs2.readFileSync(answers.get("gitKey"), 'utf8', function (err) {
+            if (err) {
+              thisf.log(err.message);
+              return;
+            }
+          });
+          k8sSecret.data.key = Buffer.from(privateKey, 'utf-8').toString('base64');
+        }
+        await k8sApi.createNamespacedSecret(
+          answers.get('namespace'),
+          k8sSecret
+        ).catch(e => this.log("createNamespacedSecret:", e.response.body));
       }
     }
+    if (answers.get("source") === "inline") {
+      let filename = destinationRoot + "/helm/" + answers.get("projectName") + "-srv/templates/function.yaml";
+      let src = {};
+      src.function = fs2.readFileSync(filename, 'utf8', function (err) {
+        if (err) {
+          thisf.log(err.message);
+          return;
+        }
+      });
+      if (answers.get("runtime") === "nodejs16") {
+        src.dependencies = fs2.readFileSync(destinationRoot + "/" + answers.get("projectName") + "-srv/package.json", 'utf8', function (err) {
+          if (err) {
+            thisf.log(err.message);
+            return;
+          }
+        });
+        src.handler = fs2.readFileSync(destinationRoot + "/" + answers.get("projectName") + "-srv/handler.js", 'utf8', function (err) {
+          if (err) {
+            thisf.log(err.message);
+            return;
+          }
+        });
+      } else {
+        src.dependencies = fs2.readFileSync(destinationRoot + "/" + answers.get("projectName") + "-srv/requirements.txt", 'utf8', function (err) {
+          if (err) {
+            thisf.log(err.message);
+            return;
+          }
+        });
+        src.handler = fs2.readFileSync(destinationRoot + "/" + answers.get("projectName") + "-srv/handler.py", 'utf8', function (err) {
+          if (err) {
+            thisf.log(err.message);
+            return;
+          }
+        });
+      }
+      let output = src.function;
+      let indent = "        ";
+      output += "      dependencies: |\n";
+      let lines = String(src.dependencies).split("\n");
+      let i;
+      for (i = 1; i <= lines.length; i++) {
+        output += indent + lines[i - 1] + "\n";
+      }
+      output += "      source: |\n";
+      lines = String(src.handler).split("\n");
+      for (i = 1; i <= lines.length; i++) {
+        output += indent + lines[i - 1] + "\n";
+      }
+      fs2.writeFileSync(filename, output, 'utf8', function (err) {
+        if (err) {
+          thisf.log(err.message);
+          return;
+        }
+      });
+      fs2.rmSync(destinationRoot + "/" + answers.get("projectName") + "-srv", { recursive: true, force: true }, function (err) {
+        if (err) {
+          thisf.log(err.message);
+          return;
+        }
+      });
+    }
+    if (answers.get("buildDeploy")) {
+      this.spawnCommandSync("make", ["helm-deploy"], opt);
+    } else {
+      this.log("");
+      this.log("You can deploy your project as follows:");
+      this.log(" cd " + answers.get("projectName"));
+      this.log(" make helm-deploy");
+    }
+    answers.delete('gitPassword');
   }
 
   end() {
@@ -389,6 +565,10 @@ module.exports = class extends Generator {
     }
     if (answers.get('BTPRuntime') === "Kyma" && (answers.get("apiS4HC") || answers.get("apiGraph"))) {
       this.log("Before deploying, consider setting values for API keys & credentials in helm/" + answers.get("projectName") + "-srv/values.yaml or set directly using the destination service REST API immediately after deployment.");
+      this.log("");
+    }
+    if (answers.get("source") === "git") {
+      this.log("Important: Before deploying, make sure to commit the files in " + answers.get("projectName") + "-srv to the base directory of your Git repository!");
     }
     this.log("");
   }

@@ -21,3 +21,15 @@ helm-undeploy:
 	helm uninstall -n <%= namespace %> <%= projectName %>-db<% if(kubeconfig !== ""){ -%> --kubeconfig <%= kubeconfig %><% } -%>
 
 <% } -%>
+
+<% if (source === "git" && gitAuth !== "none"){ -%>
+delete-git-secret:
+	kubectl -n <%= namespace %> delete secret <%= projectName %>-git-creds<% if(kubeconfig !== ""){ -%> --kubeconfig <%= kubeconfig %><% } -%>
+
+<% } -%>
+
+<% if(externalSessionManagement){ -%>
+delete-session-secret:
+	kubectl -n <%= namespace %> delete secret <%= projectName %>redis-binding-secret<% if(kubeconfig !== ""){ -%> --kubeconfig <%= kubeconfig %><% } -%>
+
+<% } -%>

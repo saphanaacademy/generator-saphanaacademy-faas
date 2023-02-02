@@ -1,0 +1,32 @@
+{
+  "name": "<%= projectName %>-srv",
+  "version": "0.0.1",
+  "dependencies": {
+    "debug": "latest"
+<% if(authentication || hana){ -%>
+    ,
+    "@sap/xsenv": "latest"
+<% } -%>
+<% if(authentication){ -%>
+    ,
+    "@sap/xssec": "latest"
+<% } -%>
+<% if(hana){ -%>
+    ,
+    "@sap/hana-client": "latest"
+<% } -%>
+<% if(apiGraph || apiDest){ -%>
+    ,
+    "@sap-cloud-sdk/http-client": "latest"
+<% } -%>
+<% if(apiS4HC || apiGraph || apiDest){ -%>
+    ,
+    "@sap-cloud-sdk/connectivity": "latest"
+<% } -%>
+<% if(apiS4HC){ -%>
+    ,
+    "@sap-cloud-sdk/odata-v2": "latest",
+    "@sap/cloud-sdk-vdm-sales-order-service": "latest"
+<% } -%>
+  }
+}
