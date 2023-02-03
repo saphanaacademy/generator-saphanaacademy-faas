@@ -1,7 +1,7 @@
 {
   "name": "generator-saphanaacademy-faas",
   "displayName": "SAP HANA Academy Function-as-a-Service",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Yeoman Generator to jump-start Function-as-a-Service Applications",
   "homepage": "https://www.youtube.com/saphanaacademy",
   "author": {

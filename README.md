@@ -59,6 +59,12 @@ make helm-undeploy
 ## Important
 Please pay special attention to messages produced by the generator - especially those regarding setting of API keys & credentials!
 
+![Visual Studio Code](demo.gif)
+
+## Video Tutorials
+
+For hands-on video tutorials click [here](https://www.youtube.com/saphanaacademy).
+
 ## Getting To Know Yeoman
 
  * Yeoman has a heart of gold.

@@ -59,6 +59,8 @@ module.exports = class extends Generator {
     answers.gitBaseDir = "";
     answers.gitReference = "main";
     answers.gitAuth = "none";
+    answers.gitSecretName = "";
+    answers.gitCreateSecret = false;
     answers.gitUsername = "";
     answers.gitPassword = "";
     answers.gitKey = "/Users/<user>/.ssh/id_ed25519";
@@ -181,14 +183,21 @@ module.exports = class extends Generator {
         default: answers.gitAuth
       },
       {
-        when: response => response.gitAuth === "basic",
+        when: response => response.source === "git" && response.gitAuth !== "none",
+        type: "input",
+        name: "gitSecretName",
+        message: "What is your Git secret name (if you don't have one leave empty and one will be created)?",
+        default: answers.gitSecretName
+      },
+      {
+        when: response => response.source === "git" && response.gitAuth === "basic" && response.gitSecretName === "",
         type: "input",
         name: "gitUsername",
         message: "What is your Git Username?",
         default: answers.gitUsername
       },
       {
-        when: response => response.gitAuth === "basic",
+        when: response => response.source === "git" && response.gitAuth === "basic" && response.gitSecretName === "",
         type: "password",
         name: "gitPassword",
         message: "What is your Git Password or Token?",
@@ -196,7 +205,7 @@ module.exports = class extends Generator {
         default: answers.gitPassword
       },
       {
-        when: response => response.gitAuth === "key",
+        when: response => response.source === "git" && response.gitAuth === "key" && response.gitSecretName === "",
         type: "input",
         name: "gitKey",
         message: "What is the path to your Git Private SSH Key?",
@@ -345,6 +354,12 @@ module.exports = class extends Generator {
     if (answersAdditional.authentication === false) {
       answersAdditional.authorization = false;
     }
+    if (answersSource.source === "git" && answersSource.gitAuth !== "none" && answersSource.gitSecretName === "") {
+      answersSource.gitSecretName = answersProject.projectName + "-git-secret";
+      answersSource.gitCreateSecret = true;
+    } else {
+      answersSource.gitCreateSecret = false;
+    }
     if (answersProject.newDir) {
       this.destinationRoot(`${answersProject.projectName}`);
     }
@@ -410,7 +425,8 @@ module.exports = class extends Generator {
       const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
       if (answers.get("externalSessionManagement") === true) {
         // generate secret
-        this.log('Creating the external session management secret...');
+        let secretName = answers.get('projectName') + '-redis-binding-secret';
+        this.log('Creating the external session management secret ' + secretName + '...');
         let pwdgen = require('generate-password');
         let redisPassword = pwdgen.generate({
           length: 64,
@@ -424,7 +440,7 @@ module.exports = class extends Generator {
           apiVersion: 'v1',
           kind: 'Secret',
           metadata: {
-            name: answers.get('projectName') + '-redis-binding-secret',
+            name: secretName,
             labels: {
               'app.kubernetes.io/managed-by': answers.get('projectName') + '-app'
             }
@@ -450,14 +466,14 @@ module.exports = class extends Generator {
           k8sSecret
         ).catch(e => this.log("createNamespacedSecret:", e.response.body));
       }
-      if (answers.get("source") === "git" && answers.get("gitAuth") !== "none") {
+      if (answers.get("source") === "git" && answers.get("gitAuth") !== "none" && answers.get("gitCreateSecret") === true) {
         // generate secret
-        this.log('Creating the Git secret...');
+        this.log('Creating the Git secret ' + answers.get("gitSecretName") + '...');
         let k8sSecret = {
           apiVersion: 'v1',
           kind: 'Secret',
           metadata: {
-            name: answers.get('projectName') + '-git-creds',
+            name: answers.get("gitSecretName"),
             labels: {
               'app.kubernetes.io/managed-by': answers.get('projectName') + '-srv'
             }
@@ -553,6 +569,7 @@ module.exports = class extends Generator {
       this.log(" cd " + answers.get("projectName"));
       this.log(" make helm-deploy");
     }
+    answers.delete('gitUsername');
     answers.delete('gitPassword');
   }
 

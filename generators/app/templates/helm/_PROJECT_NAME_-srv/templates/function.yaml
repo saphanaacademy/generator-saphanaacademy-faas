@@ -61,7 +61,7 @@ spec:
 <% if(gitAuth !== "none"){ -%>
       auth:
         type: <%= gitAuth %>
-        secretName: <%= projectName %>-git-creds
+        secretName: <%= gitSecretName %>
 <% } -%>
 <% }else{ -%>
     inline:

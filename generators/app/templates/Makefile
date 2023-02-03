@@ -24,7 +24,7 @@ helm-undeploy:
 
 <% if (source === "git" && gitAuth !== "none"){ -%>
 delete-git-secret:
-	kubectl -n <%= namespace %> delete secret <%= projectName %>-git-creds<% if(kubeconfig !== ""){ -%> --kubeconfig <%= kubeconfig %><% } -%>
+	kubectl -n <%= namespace %> delete secret <%= gitSecretName %><% if(kubeconfig !== ""){ -%> --kubeconfig <%= kubeconfig %><% } -%>
 
 <% } -%>
 
