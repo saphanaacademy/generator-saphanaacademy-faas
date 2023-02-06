@@ -26,30 +26,29 @@ services.hana.sslValidateCertificate = true;
 services.hana.ssltruststore = services.hana.certificate;
 const hanaConn = hana.createConnection();
 
-async function queryDB(sql, procedure, param) {
+async function execDB(sql, isPrepared=false, params) {
   try {
     await hanaConn.connect(services.hana);
   } catch (err) {
-    debug('queryDB connect', err.message, err.stack);
+    debug('execDB connect', err.message, err.stack);
     results = err.message;
   }
   try {
     await hanaConn.exec('SET SCHEMA ' + services.hana.schema);
-    if (procedure === undefined) {
+    if (isPrepared) {
+      let hanaStmt = await hanaConn.prepare(sql);
+      results = hanaStmt.exec(params);
+    } else {
       results = await hanaConn.exec(sql);
     }
-    else {
-      let hanaStmt = await hanaConn.prepare(procedure);
-      results = hanaStmt.exec(param);
-    }
   } catch (err) {
-    debug('queryDB exec', err.message, err.stack);
+    debug('execDB exec', err.message, err.stack);
     results = err.message;
   }
   try {
     await hanaConn.disconnect();
   } catch (err) {
-    debug('queryDB disconnect', err.message, err.stack);
+    debug('execDB disconnect', err.message, err.stack);
     results = err.message;
   }
   return results;
@@ -91,6 +90,26 @@ async function getSalesOrders(req) {
 <% } -%>
 module.exports = {
   main: async function (event, context) {
+<% if(subscription){ -%>
+    if (typeof event.data.eventType === 'string') {
+      switch(event.data.eventType) {
+        case 'defaultEvent':
+          debug('Event', event.data.eventType, event.data.value);
+          break;
+<% if(subscription){ -%>
+        case 'salesBoost':
+          debug('Event', event.data.eventType, event.data.id, event.data.amount);
+          await execDB(`UPDATE "<%= projectName %>.db::sales" SET "amount" = "amount" + ? WHERE "id" = ?`,true,[event.data.amount, event.data.id]);
+          break;
+<% } -%>
+        default:
+          debug('Event unknown', event.data.eventType);
+      }
+      event.extensions.response.sendStatus(200);
+      return;
+    }
+
+<% } -%>
     let req = event.extensions.request;
 
 <% if(authentication){ -%>
@@ -268,7 +287,7 @@ module.exports = {
 <% if(authorization){ -%>
         if (securityContext.checkScope('$XSAPPNAME.User')) {
 <% } -%>
-          results = await queryDB(`SELECT * FROM "<%= projectName %>.db::sales"`);
+          results = await execDB(`SELECT * FROM "<%= projectName %>.db::sales"`);
 <% if(authorization){ -%>
         } else {
           event.extensions.response.sendStatus(403);
@@ -282,7 +301,7 @@ module.exports = {
         if (securityContext.checkScope('$XSAPPNAME.User')) {
 <% } -%>
           let amount = req.query.amount ?? 0;
-          results = await queryDB('', `CALL "<%= projectName %>.db::SP_TopSales"(?,?)`,[amount]);
+          results = await execDB(`CALL "<%= projectName %>.db::SP_TopSales"(?,?)`,true, [amount]);
 <% if(authorization){ -%>
         } else {
           event.extensions.response.sendStatus(403);
@@ -295,7 +314,7 @@ module.exports = {
 <% if(authorization){ -%>
         if (securityContext.checkScope('$XSAPPNAME.Admin')) {
 <% } -%>
-          results = await queryDB(`SELECT * FROM M_SESSION_CONTEXT`);
+          results = await execDB(`SELECT * FROM M_SESSION_CONTEXT`);
 <% if(authorization){ -%>
         } else {
           event.extensions.response.sendStatus(403);
@@ -308,7 +327,7 @@ module.exports = {
 <% if(authorization){ -%>
         if (securityContext.checkScope('$XSAPPNAME.Admin')) {
 <% } -%>
-          results = await queryDB(`SELECT SYSTEM_ID, DATABASE_NAME, HOST, VERSION, USAGE FROM M_DATABASE`);
+          results = await execDB(`SELECT SYSTEM_ID, DATABASE_NAME, HOST, VERSION, USAGE FROM M_DATABASE`);
 <% if(authorization){ -%>
         } else {
           event.extensions.response.sendStatus(403);
@@ -321,7 +340,7 @@ module.exports = {
 <% if(authorization){ -%>
         if (securityContext.checkScope('$XSAPPNAME.Admin')) {
 <% } -%>
-          results = await queryDB(`SELECT TOP 10 USER_NAME, CLIENT_IP, CLIENT_HOST, START_TIME FROM M_CONNECTIONS WHERE OWN='TRUE' ORDER BY START_TIME DESC`);
+          results = await execDB(`SELECT TOP 10 USER_NAME, CLIENT_IP, CLIENT_HOST, START_TIME FROM M_CONNECTIONS WHERE OWN='TRUE' ORDER BY START_TIME DESC`);
 <% if(authorization){ -%>
         } else {
           event.extensions.response.sendStatus(403);

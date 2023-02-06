@@ -7,7 +7,7 @@ services:
     name: <%= projectName %>-srv
     port: '80'
     runtime: <%= runtime %>
-<% if((hana && runtime === "nodejs16") || ((hana || authentication) && runtime === "python39")){ -%>
+<% if(hana && (runtime === "nodejs16" || runtime === "python39")){ -%>
     runtimeImageOverride: hanaacademy/kyma-faas:<%= runtime %>
 <% } -%>
 <% if(authentication || apiS4HC || apiGraph || (apiDest && runtime !== "python39")){ -%>
@@ -16,7 +16,6 @@ services:
     xsappname: <%= projectName %>
     bindingName: <%= projectName %>-uaa-binding
     bindingSecretName: <%= projectName %>-uaa-binding-secret
-    url: 'https://shakyma.authentication.sap.hana.ondemand.com'
 <% } -%>
 <% if(apiS4HC || apiGraph || apiDest){ -%>
   dest:
@@ -43,4 +42,11 @@ services:
     name: <%= projectName %>-hdi
     bindingName: <%= projectName %>-hdi-binding
     bindingSecretName: <%= projectName %>-hdi-binding-secret
+<% } -%>
+<% if(eventMesh){ -%>
+  em:
+    name: <%= projectName %>-em
+    bindingName: <%= projectName %>-em-binding
+    bindingSecretName: <%= projectName %>-em-binding-secret
+    namespace: <%= emNamespace %>
 <% } -%>

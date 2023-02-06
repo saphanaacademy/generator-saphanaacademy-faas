@@ -54,7 +54,7 @@ with open(path.join(HDI_ROOT, "user"), "r") as f:
 with open(path.join(HDI_ROOT, "password"), "r") as f:
   hana_password = f.read()
 
-def query_hana(sql, procedure="", param=""):
+def exec_db(sql, is_procedure=False, is_prepared=False, params=""):
   try:
     conn = dbapi.connect(address=hana_host, port=int(hana_port), encrypt=True, user=hana_user, password=hana_password, currentSchema=hana_schema)
   except dbapi.Error as err:
@@ -62,23 +62,28 @@ def query_hana(sql, procedure="", param=""):
   else:
     with conn.cursor() as cursor:
       try:
-        if procedure != "":
-          cursor.callproc(procedure,(param,0))
+        if is_procedure:
+          cursor.callproc(sql,(params,0))
+        elif is_prepared:
+          cursor.execute(sql,params)
         else:
           cursor.execute(sql)
       except dbapi.Error as err:
         results = format(err)
       else:
-        rows = cursor.fetchall()
-        # convert to JSON
-        results = []
-        for row in rows:
-          this_row = {}
-          for index, column in enumerate(row):
-            this_row[cursor.description[index][0]] = column
-          results.append(this_row)
+        if is_procedure or sql.lower().split()[0] == 'select':
+          rows = cursor.fetchall()
+          # convert to JSON
+          results = []
+          for row in rows:
+            this_row = {}
+            for index, column in enumerate(row):
+              this_row[cursor.description[index][0]] = column
+            results.append(this_row)
+          results = json.dumps(results)
+        else:
+          results = ''
         cursor.close()
-        results = json.dumps(results)
     try:
       conn.close()
     except dbapi.Error as err:
@@ -87,6 +92,23 @@ def query_hana(sql, procedure="", param=""):
 
 <% } -%>
 def main(event, context):
+<% if(subscription){ -%>
+  if type(event["data"]) is dict:
+    event_type = event["data"]["eventType"]
+    if event_type == "defaultEvent":
+      print('Event ', event_type, event["data"]["value"])
+      return bottle.HTTPResponse(status=200, headers={"content-type": "text/plain"})
+<% if(hana){ -%>
+    elif event_type == "salesBoost":
+      print('Event ', event_type, event["data"]["id"], event["data"]["amount"])
+      exec_db('UPDATE "<%= projectName %>.db::sales" SET "amount" = "amount" + :amount WHERE "id" = :id', False, True, {"id": event["data"]["id"], "amount": event["data"]["amount"]})
+      return bottle.HTTPResponse(status=200, headers={"content-type": "text/plain"})
+<% } -%>
+    else:
+      print('Event unknown ', event_type)
+      return bottle.HTTPResponse(status=200, headers={"content-type": "text/plain"})
+
+<% } -%>
 <% if(authentication){ -%>
   token = event["extensions"]["request"].headers.get("Authorization")
   if token:
@@ -145,7 +167,7 @@ def main(event, context):
 <% if(authorization){ -%>
     if security_context.check_scope("$XSAPPNAME.User"):
 <% } -%>
-      results = query_hana('SELECT * FROM "<%= projectName %>.db::sales"')
+      results = exec_db('SELECT * FROM "<%= projectName %>.db::sales"')
 <% if(authorization){ -%>
     else:
       return bottle.HTTPResponse(status=403, headers={"content-type": "text/plain"})
@@ -158,7 +180,7 @@ def main(event, context):
       amount = event["extensions"]["request"].query.amount
       if not amount:
         amount = 0
-      results = query_hana("",'"<%= projectName %>.db::SP_TopSales"', amount)
+      results = exec_db('"<%= projectName %>.db::SP_TopSales"', True, False, amount)
 <% if(authorization){ -%>
     else:
       return bottle.HTTPResponse(status=403, headers={"content-type": "text/plain"})
@@ -168,7 +190,7 @@ def main(event, context):
 <% if(authorization){ -%>
     if security_context.check_scope("$XSAPPNAME.Admin"):
 <% } -%>
-      results = query_hana("SELECT * FROM M_SESSION_CONTEXT")
+      results = exec_db("SELECT * FROM M_SESSION_CONTEXT")
 <% if(authorization){ -%>
     else:
       return bottle.HTTPResponse(status=403, headers={"content-type": "text/plain"})
@@ -178,7 +200,7 @@ def main(event, context):
 <% if(authorization){ -%>
     if security_context.check_scope("$XSAPPNAME.Admin"):
 <% } -%>
-      results = query_hana("SELECT SYSTEM_ID, DATABASE_NAME, HOST, VERSION, USAGE FROM M_DATABASE")
+      results = exec_db("SELECT SYSTEM_ID, DATABASE_NAME, HOST, VERSION, USAGE FROM M_DATABASE")
 <% if(authorization){ -%>
     else:
       return bottle.HTTPResponse(status=403, headers={"content-type": "text/plain"})
@@ -188,7 +210,7 @@ def main(event, context):
 <% if(authorization){ -%>
     if security_context.check_scope("$XSAPPNAME.Admin"):
 <% } -%>
-      results = query_hana("SELECT TOP 10 USER_NAME, CLIENT_IP, CLIENT_HOST, TO_NVARCHAR(START_TIME) AS START_TIME FROM M_CONNECTIONS WHERE OWN='TRUE' ORDER BY START_TIME DESC")
+      results = exec_db("SELECT TOP 10 USER_NAME, CLIENT_IP, CLIENT_HOST, TO_NVARCHAR(START_TIME) AS START_TIME FROM M_CONNECTIONS WHERE OWN='TRUE' ORDER BY START_TIME DESC")
 <% if(authorization){ -%>
     else:
       return bottle.HTTPResponse(status=403, headers={"content-type": "text/plain"})

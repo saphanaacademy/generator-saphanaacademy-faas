@@ -7,7 +7,7 @@ metadata:
     app: {{ .Values.services.srv.name }}
 spec:
   runtime: {{ .Values.services.srv.runtime }}
-<% if((hana && runtime === "nodejs16") || ((hana || authentication) && runtime === "python39")){ -%>
+<% if(hana && (runtime === "nodejs16" || runtime === "python39")){ -%>
   runtimeImageOverride: {{ .Values.services.srv.runtimeImageOverride }}
 <% } -%>
   scaleConfig:
@@ -30,14 +30,14 @@ spec:
         requests:
           cpu: 1
           memory: 1Gi
-<% if(authentication || apiS4HC || hana || apiGraph || apiDest){ -%>
   env:
-    - name: SERVICE_BINDING_ROOT
-      value: /bindings
 <% if(runtime === "nodejs16"){ -%>
     - name: DEBUG
       value: '<%= projectName %>-srv:*'
 <% } -%>
+<% if(authentication || apiS4HC || hana || apiGraph || apiDest || eventMesh){ -%>
+    - name: SERVICE_BINDING_ROOT
+      value: /bindings
   secretMounts:
 <% if(authentication || apiS4HC || apiGraph || (apiDest && runtime !== "python39")){ -%>
     - secretName: {{ .Values.services.uaa.bindingSecretName }}
@@ -50,6 +50,10 @@ spec:
 <% if(hana){ -%>
     - secretName: {{ .Values.services.hdi.bindingSecretName }}
       mountPath: "/bindings/<%= projectName %>-hdi"
+<% } -%>
+<% if(eventMesh){ -%>
+    - secretName: {{ .Values.services.em.bindingSecretName }}
+      mountPath: "/bindings/<%= projectName %>-em"
 <% } -%>
 <% } -%>
   source:

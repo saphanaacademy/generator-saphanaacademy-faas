@@ -1,0 +1,29 @@
+apiVersion: eventing.kyma-project.io/v1alpha1
+kind: Subscription
+metadata:
+  name: {{ .Values.services.srv.name }}
+  labels:
+    {{- include "app.labels" . | nindent 4 }}
+    app: {{ .Values.services.srv.name }}
+spec:
+  filter:
+    filters:
+    - eventSource:
+        property: source
+        type: exact
+        value: ""
+      eventType:
+        property: type
+        type: exact
+        value: sap.kyma.custom.<%= projectName %>-srv.default.event.v1
+<% if(hana){ -%>
+    - eventSource:
+        property: source
+        type: exact
+        value: ""
+      eventType:
+        property: type
+        type: exact
+        value: sap.kyma.custom.<%= projectName %>-srv.sales.boost.v1
+<% } -%>
+  sink: http://<%= projectName %>-srv.default.svc.cluster.local

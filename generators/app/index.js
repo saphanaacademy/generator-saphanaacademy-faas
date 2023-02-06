@@ -71,13 +71,17 @@ module.exports = class extends Generator {
     answers.apiGraphTokenURL = "https://<subdomain>.authentication.<region>.hana.ondemand.com";
     answers.apiDest = false;
     answers.hana = false;
+    answers.subscription = false;
+    answers.eventMesh = false;
+    answers.emNamespace = "company/technology/events";
+    answers.apirule = true;
     answers.authentication = true;
     answers.authorization = true;
     answers.apiGraphSameSubaccount = true;
     answers.customDomain = "";
     answers.clusterDomain = "0000000.kyma.ondemand.com";
     answers.gateway = "kyma-gateway.kyma-system.svc.cluster.local";
-    answers.ui = true;
+    answers.ui = false;
     answers.externalSessionManagement = false;
     answers.buildDeploy = false;
     // prompts
@@ -156,7 +160,7 @@ module.exports = class extends Generator {
         when: response => response.source === "git",
         type: "input",
         name: "gitURL",
-        message: "What is your Git URL?",
+        message: "What is your Git URL? If you will be authenticating via SSH Key the URL should begin with git@github.com: rather than https://github.com/",
         default: answers.gitURL
       },
       {
@@ -332,8 +336,43 @@ module.exports = class extends Generator {
       },
       {
         type: "confirm",
+        name: "subscription",
+        message: "Would you like to subscribe to events?",
+        default: answers.subscription
+      },
+/*
+      {
+        when: response => response.subscription === true,
+        type: "confirm",
+        name: "eventMesh",
+        message: "Would you like to use SAP Event Mesh?",
+        default: answers.eventMesh
+      },
+      {
+        when: response => response.eventMesh === true,
+        type: "input",
+        name: "emNamespace",
+        message: "What messaging namespace would you like? Note: Namespaces must contain exactly three segments and be unique per SAP BTP subaccount.",
+        validate: (s) => {
+          if (/^[a-zA-Z0-9//]*$/g.test(s) && s.split("/").length === 3 && s.substring(0, 1) !== "/" && s.substring(s.length - 1, s.length) !== "/") {
+            return true;
+          }
+          return "Please specify exactly three segments and only use alphanumeric characters for the messaging namespace.";
+        },
+        default: answers.emNamespace
+      },
+*/
+      {
+        when: response => response.subscription === true,
+        type: "confirm",
+        name: "apirule",
+        message: "Would you like to expose the function?",
+        default: answers.apirule
+      },
+      {
+        type: "confirm",
         name: "ui",
-        message: "Would you like a UI?",
+        message: "Would you like a UI / Application Router?",
         default: answers.ui
       },
       {
@@ -351,14 +390,46 @@ module.exports = class extends Generator {
         default: answers.buildDeploy
       }
     ]);
-    if (answersAdditional.authentication === false) {
-      answersAdditional.authorization = false;
-    }
     if (answersSource.source === "git" && answersSource.gitAuth !== "none" && answersSource.gitSecretName === "") {
       answersSource.gitSecretName = answersProject.projectName + "-git-secret";
       answersSource.gitCreateSecret = true;
     } else {
+      answersSource.gitSecretName = "";
       answersSource.gitCreateSecret = false;
+    }
+    if (answersSource.source !== "git") {
+      answers.gitURL = "";
+      answers.gitBaseDir = "";
+      answers.gitReference = "";
+      answers.gitAuth = "";
+      answers.gitSecretName = "";
+      answers.gitCreateSecret = false;
+      answers.gitUsername = "";
+      answers.gitPassword = "";
+      answers.gitKey = "";
+    }
+    if (answersRuntime.runtime === "python39") {
+      answersAPI.apiS4HC = false;
+      answersAPI.apiGraph = false;
+    }
+    if (answersAPI.apiGraph === false) {
+      answers.apiGraphURL = "";
+      answers.apiGraphId = "";
+      answers.apiGraphTokenURL = "";
+      answers.apiGraphSameSubaccount = false;
+    }
+    if (answersAdditional.authentication === false) {
+      answersAdditional.authorization = false;
+    }
+    if (answersFurther.subscription === false) {
+      answersFurther.eventMesh = false;
+      answersFurther.apirule = true;
+    }
+    if (answersFurther.ui === false) {
+      answersFurther.externalSessionManagement = false;
+    }
+    if (answersSource.source !== "inline") {
+      answersFurther.buildDeploy = false;
     }
     if (answersProject.newDir) {
       this.destinationRoot(`${answersProject.projectName}`);
@@ -392,14 +463,20 @@ module.exports = class extends Generator {
                   if (!(file.includes('helm/_PROJECT_NAME_-db') && answers.get('hana') === false)) {
                     if (!((file.includes('service-uaa.yaml') || file.includes('binding-uaa.yaml')) && answers.get('authentication') === false && answers.get('apiS4HC') === false && answers.get('apiGraph') === false && (answers.get('apiDest') === false || (answers.get('apiDest') === true && answers.get('runtime') === 'python39')))) {
                       if (!((file.includes('service-dest.yaml') || file.includes('binding-dest.yaml')) && answers.get('apiS4HC') === false && answers.get('apiGraph') === false && answers.get('apiDest') === false)) {
-                        if (!((file.includes('-redis.yaml') || file.includes('destinationrule.yaml')) && answers.get('externalSessionManagement') === false)) {
-                          const sOrigin = this.templatePath(file);
-                          let fileDest = file;
-                          fileDest = fileDest.replace('_PROJECT_NAME_', answers.get('projectName'));
-                          fileDest = fileDest.replace('dotgitignore', '.gitignore');
-                          fileDest = fileDest.replace('dotdockerignore', '.dockerignore');
-                          const sTarget = this.destinationPath(fileDest);
-                          this.fs.copyTpl(sOrigin, sTarget, this.config.getAll());
+                        if (!(file.includes('subscription.yaml') && answers.get('subscription') === false)) {
+                          if (!((file.includes('service-em.yaml') || file.includes('binding-em.yaml')) && answers.get('eventMesh') === false)) {
+                            if (!(file.includes('_PROJECT_NAME_-srv/templates/apirule.yaml') && answers.get('apirule') === false)) {
+                              if (!((file.includes('-redis.yaml') || file.includes('destinationrule.yaml')) && answers.get('externalSessionManagement') === false)) {
+                                const sOrigin = this.templatePath(file);
+                                let fileDest = file;
+                                fileDest = fileDest.replace('_PROJECT_NAME_', answers.get('projectName'));
+                                fileDest = fileDest.replace('dotgitignore', '.gitignore');
+                                fileDest = fileDest.replace('dotdockerignore', '.dockerignore');
+                                const sTarget = this.destinationPath(fileDest);
+                                this.fs.copyTpl(sOrigin, sTarget, this.config.getAll());
+                              }
+                            }
+                          }
                         }
                       }
                     }
@@ -585,7 +662,7 @@ module.exports = class extends Generator {
       this.log("");
     }
     if (answers.get("source") === "git") {
-      this.log("Important: Before deploying, make sure to commit the files in " + answers.get("projectName") + "-srv to the base directory of your Git repository!");
+      this.log("Important: Before deploying, make sure to commit the files in " + answers.get("projectName") + "-srv to the base directory of your Git repository! You might also consider committing the entire project to Git.");
     }
     this.log("");
   }

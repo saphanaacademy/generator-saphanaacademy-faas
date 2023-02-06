@@ -1,0 +1,29 @@
+apiVersion: services.cloud.sap.com/v1
+kind: ServiceInstance
+metadata:
+  name: '{{ .Values.services.em.name }}'
+  labels:
+    app.kubernetes.io/name: '{{ .Values.services.em.name }}'
+spec:
+  externalName: '{{ .Values.services.em.name }}'
+  serviceOfferingName: enterprise-messaging
+  servicePlanName: default
+  parameters:
+    version: 1.1.0
+    emname: <%= projectName %>-em
+    namespace: '{{ .Values.services.em.namespace }}'
+    options:
+      management: true
+      messagingrest: true
+      messaging: true
+    rules:
+      topicRules:
+        publishFilter:
+          - '${namespace}/*'
+        subscribeFilter:
+          - '${namespace}/*'
+      queueRules:
+        publishFilter:
+          - '${namespace}/*'
+        subscribeFilter:
+          - '${namespace}/*'

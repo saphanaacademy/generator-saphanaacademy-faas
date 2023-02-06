@@ -1,0 +1,6 @@
+<% if(authentication){ -%>
+sap-xssec==4.0.0
+<% } -%>
+<% if(hana){ -%>
+hdbcli==2.15.19
+<% } -%>
