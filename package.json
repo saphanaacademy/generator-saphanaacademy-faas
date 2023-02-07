@@ -1,7 +1,7 @@
 {
   "name": "generator-saphanaacademy-faas",
   "displayName": "SAP HANA Academy Function-as-a-Service",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "Yeoman Generator to jump-start Function-as-a-Service Applications",
   "homepage": "https://www.youtube.com/saphanaacademy",
   "author": {
@@ -23,11 +23,16 @@
     "api",
     "sdk",
     "cloudsdk",
+    "destination",
     "uaa",
     "security",
     "authentication",
     "authorization",
     "hana",
+    "subscription",
+    "event",
+    "mesh",
+    "eventmesh",
     "saphanaacademy",
     "hanaacademy",
     "yeoman-generator"

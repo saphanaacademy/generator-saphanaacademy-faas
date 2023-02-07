@@ -15,7 +15,7 @@ spec:
       eventType:
         property: type
         type: exact
-        value: sap.kyma.custom.<%= projectName %>-srv.default.event.v1
+        value: sap.kyma.custom.<%= projectName %>.default.event.v1
 <% if(hana){ -%>
     - eventSource:
         property: source
@@ -24,6 +24,6 @@ spec:
       eventType:
         property: type
         type: exact
-        value: sap.kyma.custom.<%= projectName %>-srv.sales.boost.v1
+        value: sap.kyma.custom.<%= projectName %>.sales.boost.v1
 <% } -%>
   sink: http://<%= projectName %>-srv.default.svc.cluster.local

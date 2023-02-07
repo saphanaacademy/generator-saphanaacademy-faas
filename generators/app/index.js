@@ -423,6 +423,7 @@ module.exports = class extends Generator {
     }
     if (answersFurther.subscription === false) {
       answersFurther.eventMesh = false;
+      answersFurther.emNamespace = "";
       answersFurther.apirule = true;
     }
     if (answersFurther.ui === false) {

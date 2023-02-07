@@ -28,5 +28,10 @@
     "@sap-cloud-sdk/odata-v2": "latest",
     "@sap/cloud-sdk-vdm-sales-order-service": "latest"
 <% } -%>
+<% if(eventMesh){ -%>
+    ,
+    "cloudevents": "latest",
+    "axios": "latest"
+<% } -%>
   }
 }

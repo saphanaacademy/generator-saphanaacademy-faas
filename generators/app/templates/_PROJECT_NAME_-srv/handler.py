@@ -93,19 +93,18 @@ def exec_db(sql, is_procedure=False, is_prepared=False, params=""):
 <% } -%>
 def main(event, context):
 <% if(subscription){ -%>
-  if type(event["data"]) is dict:
-    event_type = event["data"]["eventType"]
-    if event_type == "defaultEvent":
-      print('Event ', event_type, event["data"]["value"])
+  if type(event["ce-type"]) is str:
+    if event["ce-type"] == "sap.kyma.custom.<%= projectName %>.default.event.v1":
+      print("Event", event["ce-type"], event["data"]["value"])
       return bottle.HTTPResponse(status=200, headers={"content-type": "text/plain"})
 <% if(hana){ -%>
-    elif event_type == "salesBoost":
-      print('Event ', event_type, event["data"]["id"], event["data"]["amount"])
+    elif event["ce-type"] == "sap.kyma.custom.<%= projectName %>.sales.boost.v1":
+      print("Event", event["ce-type"], event["data"]["id"], event["data"]["amount"])
       exec_db('UPDATE "<%= projectName %>.db::sales" SET "amount" = "amount" + :amount WHERE "id" = :id', False, True, {"id": event["data"]["id"], "amount": event["data"]["amount"]})
       return bottle.HTTPResponse(status=200, headers={"content-type": "text/plain"})
 <% } -%>
     else:
-      print('Event unknown ', event_type)
+      print("Event unknown", event["ce-type"])
       return bottle.HTTPResponse(status=200, headers={"content-type": "text/plain"})
 
 <% } -%>

@@ -1,4 +1,8 @@
 const debug = require('debug')('<%= projectName %>-srv:function');
+<% if(eventMesh){ -%>
+const axios = require('axios').default;
+const { HTTP, CloudEvent } = require('cloudevents');
+<% } -%>
 <% if(authentication || hana){ -%>
 const xsenv = require('@sap/xsenv');
 const services = xsenv.getServices({
@@ -91,19 +95,19 @@ async function getSalesOrders(req) {
 module.exports = {
   main: async function (event, context) {
 <% if(subscription){ -%>
-    if (typeof event.data.eventType === 'string') {
-      switch(event.data.eventType) {
-        case 'defaultEvent':
-          debug('Event', event.data.eventType, event.data.value);
+    if (typeof event['ce-type'] === 'string') {
+      switch(event['ce-type']) {
+        case 'sap.kyma.custom.<%= projectName %>.default.event.v1':
+          debug('Event', event['ce-type'], event.data.value);
           break;
 <% if(subscription){ -%>
-        case 'salesBoost':
-          debug('Event', event.data.eventType, event.data.id, event.data.amount);
-          await execDB(`UPDATE "<%= projectName %>.db::sales" SET "amount" = "amount" + ? WHERE "id" = ?`,true,[event.data.amount, event.data.id]);
+        case 'sap.kyma.custom.<%= projectName %>.sales.boost.v1':
+          debug('Event', event['ce-type'], event.data.id, event.data.amount);
+          await execDB(`UPDATE "<%= projectName %>.db::sales" SET "amount" = "amount" + ? WHERE "id" = ?`, true, [event.data.amount, event.data.id]);
           break;
 <% } -%>
         default:
-          debug('Event unknown', event.data.eventType);
+          debug('Event unknown', event['ce-type']);
       }
       event.extensions.response.sendStatus(200);
       return;
@@ -300,8 +304,7 @@ module.exports = {
 <% if(authorization){ -%>
         if (securityContext.checkScope('$XSAPPNAME.User')) {
 <% } -%>
-          let amount = req.query.amount ?? 0;
-          results = await execDB(`CALL "<%= projectName %>.db::SP_TopSales"(?,?)`,true, [amount]);
+          results = await execDB(`CALL "<%= projectName %>.db::SP_TopSales"(?,?)`, true, [req.query.amount ?? 0]);
 <% if(authorization){ -%>
         } else {
           event.extensions.response.sendStatus(403);
@@ -349,6 +352,33 @@ module.exports = {
 <% } -%>
         break;
 
+<% if(eventMesh){ -%>
+      case '/srv/boost':
+<% if(authorization){ -%>
+        if (securityContext.checkScope('$XSAPPNAME.Admin')) {
+<% } -%>
+          try {
+            const ce = new CloudEvent({
+              type: "sap.kyma.custom.<%= projectName %>.sales.boost.v1",
+              source: "/<%= emNamespace %>",
+              datacontenttype: "application/json",
+              data: {id: req.query.id ?? 1, amount: req.query.amount ?? 500}
+            });
+            const msg = HTTP.structured(ce);
+            results = await axios({method: 'post', url: process.env.PUBLISHER_URL, data: msg.body, headers: msg.headers});
+          } catch (err) {
+            debug('boost', err.message, err.stack);
+            results = err.message;
+          }
+<% if(authorization){ -%>
+        } else {
+          event.extensions.response.sendStatus(403);
+          return;
+        }
+<% } -%>
+        break;
+
+<% } -%>
 <% } -%>
       default:
         event.extensions.response.sendStatus(400);
