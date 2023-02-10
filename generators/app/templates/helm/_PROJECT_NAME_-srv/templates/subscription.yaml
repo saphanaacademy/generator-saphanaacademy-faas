@@ -26,4 +26,4 @@ spec:
         type: exact
         value: sap.kyma.custom.<%= projectName %>.sales.boost.v1
 <% } -%>
-  sink: http://<%= projectName %>-srv.default.svc.cluster.local
+  sink: http://<%= projectName %>-srv.<%= namespace %>.svc.cluster.local

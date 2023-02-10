@@ -63,7 +63,7 @@ Please pay special attention to messages produced by the generator - especially 
 
 ## Video Tutorials
 
-For hands-on video tutorials click [here](https://www.youtube.com/saphanaacademy).
+For hands-on video tutorials click [here](https://www.youtube.com/playlist?list=PLkzo92owKnVyyemLABuRYmyc29crnvxn3).
 
 ## Getting To Know Yeoman
 
