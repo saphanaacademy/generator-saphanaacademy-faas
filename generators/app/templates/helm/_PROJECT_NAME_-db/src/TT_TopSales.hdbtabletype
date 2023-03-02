@@ -1,0 +1,4 @@
+TYPE "<%= projectName %>.db::TT_TopSales" AS TABLE (
+  "country" VARCHAR(100),
+  "amount" INTEGER
+)

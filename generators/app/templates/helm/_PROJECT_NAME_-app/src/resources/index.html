@@ -1,0 +1,52 @@
+<!DOCTYPE HTML>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <title><%= projectName %></title>
+</head>
+
+<body>
+  <h2><%= projectName %></h2>
+  <h3>Home</h3>
+  <a href="/srv/">Home</a><br />
+<% if(authentication){ -%>
+  <h3>User</h3>
+  <a href="/srv/user">User</a><br />
+<% } -%>
+<% if(apiS4HC){ -%>
+  <h3>SAP S/4HANA Cloud</h3>
+  <a href="/srv/salesorders">Sales Orders</a><br />
+<% } -%>
+<% if(apiGraph){ -%>
+  <h3>SAP Graph</h3>
+  <a href="/srv/graph">Namespaces</a><br />
+  <a href="/srv/graph?path=<%= apiGraphId %>/metadata/entities">Entities</a><br />
+  <a href="/srv/graph?path=<%= apiGraphId %>/sap.graph">sap.graph</a><br />
+  <a href="/srv/graph?path=<%= apiGraphId %>/sap.graph/Company?$top=3">Company</a><br />
+  <a href="/srv/graph?path=<%= apiGraphId %>/sap.graph/Product?$top=3">Product</a><br />
+  <a href="/srv/graph?path=<%= apiGraphId %>/sap.graph/WorkforcePerson?$top=3">WorkforcePerson</a><br />
+  <a href="/srv/graph?path=<%= apiGraphId %>/sap.graph/SalesOrder/1">Sales Order</a><br />
+  <a href="/srv/graph?path=<%= apiGraphId %>/sap.s4/A_SalesOrder/1">Sales Order (SAP S/4HANA Cloud)</a><br />
+  <a href="/srv/graph?path=<%= apiGraphId %>/sap.s4/A_SalesOrder/1&location=San%20Jose">Sales Order (SAP S/4HANA Cloud) - Update</a><br />
+<% } -%>
+<% if(apiDest){ -%>
+  <h3>Destinations</h3>
+  <a href="/srv/dest?destination=<%= projectName %>-nw&path=Customers?$top=1">Customers (Northwind)</a><br />
+<% } -%>
+<% if(hana){ -%>
+  <h3>SAP HANA Cloud</h3>
+  <a href="/srv/sales">Sales</a><br />
+  <a href="/srv/topSales?amount=500">Top Sales</a><br />
+  <h3>Admin</h3>
+  <a href="/srv/session">Session</a><br />
+  <a href="/srv/db">Database</a><br />
+  <a href="/srv/connections">Connections</a><br />
+<% if(eventMesh){ -%>
+  <a href="/srv/boost?id=1&amount=500">Boost</a><br />
+<% } -%>
+<% } -%>
+
+</body>
+
+</html>

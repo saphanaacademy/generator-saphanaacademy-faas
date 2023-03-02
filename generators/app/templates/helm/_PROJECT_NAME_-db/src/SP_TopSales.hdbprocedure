@@ -1,0 +1,12 @@
+PROCEDURE "<%= projectName %>.db::SP_TopSales" (IN amount INTEGER, OUT result "<%= projectName %>.db::TT_TopSales")
+  LANGUAGE SQLSCRIPT
+  SQL SECURITY INVOKER
+  READS SQL DATA
+  AS
+BEGIN
+  result = select "country", "amount" 
+             from "<%= projectName %>.db::sales"
+             where "amount" >= :amount
+             order by "amount" desc
+             ;
+END

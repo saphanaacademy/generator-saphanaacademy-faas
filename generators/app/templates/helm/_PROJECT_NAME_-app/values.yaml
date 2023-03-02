@@ -8,7 +8,7 @@ services:
     image:
       dockerID: sapse
       repository: approuter
-      tag: "13.0.2"
+      tag: "14.0.0"
       pullPolicy: Always
       port: 5000
     service:

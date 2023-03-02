@@ -3,37 +3,4 @@ kind: ConfigMap
 metadata:
   name: {{ .Values.services.app.xsapp }}
 data:
-  xs-app.json: |-
-    {
-      "welcomeFile": "index.html",
-<% if(authentication){ -%>
-      "authenticationMethod": "route",
-<% }else{ -%>
-      "authenticationMethod": "none",
-<% } -%>
-      "routes": [
-        {
-          "source": "^/srv/(.*)$",
-<% if(authentication){ -%>
-          "authenticationType": "xsuaa",
-<% } -%>
-<% if(authorization){ -%>
-          "scope": "$XSAPPNAME.User",
-<% } -%>
-          "destination": "srv"
-        }
-<% if(ui){ -%>
-        ,
-        {
-          "source": "/(.*)",
-<% if(authentication){ -%>
-          "authenticationType": "xsuaa",
-<% } -%>
-<% if(authorization){ -%>
-          "scope": "$XSAPPNAME.User",
-<% } -%>
-          "localDir": "resources"
-        }
-<% } -%>
-      ]
-    }
+{{ (.Files.Glob "src/xs-app.json").AsConfig | indent 2 }}
