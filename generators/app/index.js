@@ -314,7 +314,7 @@ module.exports = class extends Generator {
           answers.clusterDomain = resGet.stdout.toString().replace(/'/g, '');
         }
       } catch (error) {
-        this.log("kubectl:", error);
+        this.log("kubectl error:", error);
       }
     } else {
       answers.clusterDomain = answersAdditional.customDomain;
@@ -340,28 +340,28 @@ module.exports = class extends Generator {
         message: "Would you like to subscribe to events?",
         default: answers.subscription
       },
-/*
-      {
-        when: response => response.subscription === true,
-        type: "confirm",
-        name: "eventMesh",
-        message: "Would you like to use SAP Event Mesh?",
-        default: answers.eventMesh
-      },
-      {
-        when: response => response.eventMesh === true,
-        type: "input",
-        name: "emNamespace",
-        message: "What messaging namespace would you like? Note: Namespaces must contain exactly three segments and be unique per SAP BTP subaccount.",
-        validate: (s) => {
-          if (/^[a-zA-Z0-9//]*$/g.test(s) && s.split("/").length === 3 && s.substring(0, 1) !== "/" && s.substring(s.length - 1, s.length) !== "/") {
-            return true;
-          }
-          return "Please specify exactly three segments and only use alphanumeric characters for the messaging namespace.";
-        },
-        default: answers.emNamespace
-      },
-*/
+      /*
+            {
+              when: response => response.subscription === true,
+              type: "confirm",
+              name: "eventMesh",
+              message: "Would you like to use SAP Event Mesh?",
+              default: answers.eventMesh
+            },
+            {
+              when: response => response.eventMesh === true,
+              type: "input",
+              name: "emNamespace",
+              message: "What messaging namespace would you like? Note: Namespaces must contain exactly three segments and be unique per SAP BTP subaccount.",
+              validate: (s) => {
+                if (/^[a-zA-Z0-9//]*$/g.test(s) && s.split("/").length === 3 && s.substring(0, 1) !== "/" && s.substring(s.length - 1, s.length) !== "/") {
+                  return true;
+                }
+                return "Please specify exactly three segments and only use alphanumeric characters for the messaging namespace.";
+              },
+              default: answers.emNamespace
+            },
+      */
       {
         when: response => response.subscription === true,
         type: "confirm",
@@ -495,86 +495,94 @@ module.exports = class extends Generator {
     const fs2 = require('fs');
     const destinationRoot = this.destinationRoot();
     var opt = { "cwd": answers.get("destinationPath") };
-    if (answers.get('BTPRuntime') === "Kyma") {
+    if (answers.get("BTPRuntime") === "Kyma") {
       // Kyma runtime
-      const k8s = require('@kubernetes/client-node');
-      const kc = new k8s.KubeConfig();
-      kc.loadFromDefault();
-      const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
-      if (answers.get("externalSessionManagement") === true) {
-        // generate secret
-        let secretName = answers.get('projectName') + '-redis-binding-secret';
-        this.log('Creating the external session management secret ' + secretName + '...');
-        let pwdgen = require('generate-password');
-        let redisPassword = pwdgen.generate({
-          length: 64,
-          numbers: true
-        });
-        let sessionSecret = pwdgen.generate({
-          length: 64,
-          numbers: true
-        });
-        let k8sSecret = {
-          apiVersion: 'v1',
-          kind: 'Secret',
-          metadata: {
-            name: secretName,
-            labels: {
-              'app.kubernetes.io/managed-by': answers.get('projectName') + '-app'
-            }
-          },
-          type: 'Opaque',
-          data: {
-            EXT_SESSION_MGT: Buffer.from('{"instanceName":"' + answers.get("projectName") + '-redis", "storageType":"redis", "sessionSecret": "' + sessionSecret + '"}', 'utf-8').toString('base64'),
-            REDIS_PASSWORD: Buffer.from('"' + redisPassword + '"', 'utf-8').toString('base64'),
-            ".metadata": Buffer.from('{"credentialProperties":[{"name":"hostname","format":"text"},{"name":"port","format":"text"},{"name":"password","format":"text"},{"name":"cluster_mode","format":"text"},{"name":"tls","format":"text"}],"metaDataProperties":[{"name":"instance_name","format":"text"},{"name":"type","format":"text"},{"name":"label","format":"text"}]}', 'utf-8').toString('base64'),
-            instance_name: Buffer.from(answers.get('projectName') + '-db-' + answers.get('schemaName'), 'utf-8').toString('base64'),
-            type: Buffer.from("redis", 'utf-8').toString('base64'),
-            name: Buffer.from(answers.get("projectName") + "-redis", 'utf-8').toString('base64'),
-            instance_name: Buffer.from(answers.get("projectName") + "-redis", 'utf-8').toString('base64'),
-            hostname: Buffer.from(answers.get("projectName") + "-redis", 'utf-8').toString('base64'),
-            port: Buffer.from("6379", 'utf-8').toString('base64'),
-            password: Buffer.from(redisPassword, 'utf-8').toString('base64'),
-            cluster_mode: Buffer.from("false", 'utf-8').toString('base64'),
-            tls: Buffer.from("false", 'utf-8').toString('base64')
-          }
-        };
-        await k8sApi.createNamespacedSecret(
-          answers.get('namespace'),
-          k8sSecret
-        ).catch(e => this.log("createNamespacedSecret:", e.response.body));
-      }
-      if (answers.get("source") === "git" && answers.get("gitAuth") !== "none" && answers.get("gitCreateSecret") === true) {
-        // generate secret
-        this.log('Creating the Git secret ' + answers.get("gitSecretName") + '...');
-        let k8sSecret = {
-          apiVersion: 'v1',
-          kind: 'Secret',
-          metadata: {
-            name: answers.get("gitSecretName"),
-            labels: {
-              'app.kubernetes.io/managed-by': answers.get('projectName') + '-srv'
-            }
-          },
-          type: 'Opaque',
-          data: {}
-        };
-        if (answers.get("gitAuth") === "basic") {
-          k8sSecret.data.username = Buffer.from(answers.get("gitUsername"), 'utf-8').toString('base64');
-          k8sSecret.data.password = Buffer.from(answers.get("gitPassword"), 'utf-8').toString('base64');
-        } else if (answers.get("gitAuth") === "key") {
-          let privateKey = fs2.readFileSync(answers.get("gitKey"), 'utf8', function (err) {
-            if (err) {
-              thisf.log(err.message);
-              return;
-            }
-          });
-          k8sSecret.data.key = Buffer.from(privateKey, 'utf-8').toString('base64');
+      try {
+        const k8s = require('@kubernetes/client-node');
+        const kc = new k8s.KubeConfig();
+        if (answers.get("kubeconfig") !== "") {
+          kc.loadFromFile(answers.get('kubeconfig'));
+        } else {
+          kc.loadFromDefault();
         }
-        await k8sApi.createNamespacedSecret(
-          answers.get('namespace'),
-          k8sSecret
-        ).catch(e => this.log("createNamespacedSecret:", e.response.body));
+        const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
+        if (answers.get("externalSessionManagement") === true) {
+          // generate secret
+          let secretName = answers.get("projectName") + '-redis-binding-secret';
+          this.log('Creating the external session management secret ' + secretName + '...');
+          let pwdgen = require("generate-password");
+          let redisPassword = pwdgen.generate({
+            length: 64,
+            numbers: true
+          });
+          let sessionSecret = pwdgen.generate({
+            length: 64,
+            numbers: true
+          });
+          let k8sSecret = {
+            apiVersion: 'v1',
+            kind: 'Secret',
+            metadata: {
+              name: secretName,
+              labels: {
+                'app.kubernetes.io/managed-by': answers.get('projectName') + '-app'
+              }
+            },
+            type: 'Opaque',
+            data: {
+              EXT_SESSION_MGT: Buffer.from('{"instanceName":"' + answers.get("projectName") + '-redis", "storageType":"redis", "sessionSecret": "' + sessionSecret + '"}', 'utf-8').toString('base64'),
+              REDIS_PASSWORD: Buffer.from('"' + redisPassword + '"', 'utf-8').toString('base64'),
+              ".metadata": Buffer.from('{"credentialProperties":[{"name":"hostname","format":"text"},{"name":"port","format":"text"},{"name":"password","format":"text"},{"name":"cluster_mode","format":"text"},{"name":"tls","format":"text"}],"metaDataProperties":[{"name":"instance_name","format":"text"},{"name":"type","format":"text"},{"name":"label","format":"text"}]}', 'utf-8').toString('base64'),
+              instance_name: Buffer.from(answers.get('projectName') + '-db-' + answers.get('schemaName'), 'utf-8').toString('base64'),
+              type: Buffer.from("redis", 'utf-8').toString('base64'),
+              name: Buffer.from(answers.get("projectName") + "-redis", 'utf-8').toString('base64'),
+              instance_name: Buffer.from(answers.get("projectName") + "-redis", 'utf-8').toString('base64'),
+              hostname: Buffer.from(answers.get("projectName") + "-redis", 'utf-8').toString('base64'),
+              port: Buffer.from("6379", 'utf-8').toString('base64'),
+              password: Buffer.from(redisPassword, 'utf-8').toString('base64'),
+              cluster_mode: Buffer.from("false", 'utf-8').toString('base64'),
+              tls: Buffer.from("false", 'utf-8').toString('base64')
+            }
+          };
+          await k8sApi.createNamespacedSecret(
+            answers.get("namespace"),
+            k8sSecret
+          ).catch(e => this.log("createNamespacedSecret:", e.response.body));
+        }
+        if (answers.get("source") === "git" && answers.get("gitAuth") !== "none" && answers.get("gitCreateSecret") === true) {
+          // generate secret
+          this.log('Creating the Git secret ' + answers.get("gitSecretName") + '...');
+          let k8sSecret = {
+            apiVersion: 'v1',
+            kind: 'Secret',
+            metadata: {
+              name: answers.get("gitSecretName"),
+              labels: {
+                'app.kubernetes.io/managed-by': answers.get('projectName') + '-srv'
+              }
+            },
+            type: 'Opaque',
+            data: {}
+          };
+          if (answers.get("gitAuth") === "basic") {
+            k8sSecret.data.username = Buffer.from(answers.get("gitUsername"), 'utf-8').toString('base64');
+            k8sSecret.data.password = Buffer.from(answers.get("gitPassword"), 'utf-8').toString('base64');
+          } else if (answers.get("gitAuth") === "key") {
+            let privateKey = fs2.readFileSync(answers.get("gitKey"), 'utf8', function (err) {
+              if (err) {
+                thisf.log(err.message);
+                return;
+              }
+            });
+            k8sSecret.data.key = Buffer.from(privateKey, 'utf-8').toString('base64');
+          }
+          await k8sApi.createNamespacedSecret(
+            answers.get("namespace"),
+            k8sSecret
+          ).catch(e => this.log("createNamespacedSecret:", e.response.body));
+        }
+      } catch (error) {
+        this.log("kubeconfig error:", error);
       }
     }
     if (answers.get("source") === "inline") {
@@ -647,8 +655,8 @@ module.exports = class extends Generator {
       this.log(" cd " + answers.get("projectName"));
       this.log(" make helm-deploy");
     }
-    answers.delete('gitUsername');
-    answers.delete('gitPassword');
+    answers.delete("gitUsername");
+    answers.delete("gitPassword");
   }
 
   end() {
