@@ -457,7 +457,7 @@ module.exports = class extends Generator {
       })
       .forEach((file) => {
         if (!(file.includes('.DS_Store'))) {
-          if (!((file.substring(0, 5) === 'helm/' || file.includes('/Dockerfile') || file === 'dotdockerignore' || file === 'Makefile') && answers.get('BTPRuntime') !== 'Kyma')) {
+          if (!((file.substring(0, 5) === 'helm/' || file === 'Makefile') && answers.get('BTPRuntime') !== 'Kyma')) {
             if (!((file.includes('_PROJECT_NAME_-srv/handler.js') || file.includes('_PROJECT_NAME_-srv/package.json')) && answers.get('runtime') !== "nodejs16")) {
               if (!((file.includes('_PROJECT_NAME_-srv/handler.py') || file.includes('_PROJECT_NAME_-srv/requirements.txt')) && answers.get('runtime') !== "python39")) {
                 if (!(file.includes('helm/_PROJECT_NAME_-app') && answers.get('ui') === false)) {
@@ -472,7 +472,6 @@ module.exports = class extends Generator {
                                 let fileDest = file;
                                 fileDest = fileDest.replace('_PROJECT_NAME_', answers.get('projectName'));
                                 fileDest = fileDest.replace('dotgitignore', '.gitignore');
-                                fileDest = fileDest.replace('dotdockerignore', '.dockerignore');
                                 const sTarget = this.destinationPath(fileDest);
                                 this.fs.copyTpl(sOrigin, sTarget, this.config.getAll());
                               }
